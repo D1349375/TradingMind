@@ -12,9 +12,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Prisma 7:連線字串移到 prisma.config.ts,這裡不再放 url
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // 對應 Supabase Auth 的 auth.users,id 用同一組 uuid(標準 Supabase+Prisma 搭配方式)
