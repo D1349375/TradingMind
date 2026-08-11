@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============ Design tokens ============
+   來源:../../design.md 第二、三節,與 ../../../prototype/index.html 保持同一套值。
+   任何調整都先改這裡+design.md,不要在個別元件裡硬寫色碼/字級。 */
+:root {
+  --canvas: #f7f6f3;
+  --surface: #ffffff;
+  --border: #948d7d;
+  --text: #37352f;
+  --text-secondary: #5c5a54;
+  --text-tertiary: #83807a;
+  --accent: #2f6fed;
+  --accent-soft: rgba(47, 111, 237, 0.1);
+  --profit: #0f7a56;
+  --loss: #b83c30;
+  --profit-bg: rgba(15, 122, 86, 0.09);
+  --loss-bg: rgba(184, 60, 48, 0.09);
+  --profit-bg-strong: rgba(15, 122, 86, 0.12);
+  --loss-bg-strong: rgba(184, 60, 48, 0.12);
+  --warning: #96640d;
+  --warning-bg: rgba(150, 100, 13, 0.1);
+  --radius: 6px;
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+html[data-theme="dark"] {
+  --canvas: #191a1c;
+  --surface: #232426;
+  --border: #727376;
+  --text: #e7e6e3;
+  --text-secondary: #adaba5;
+  --text-tertiary: #88867f;
+  --accent: #6f9bf5;
+  --accent-soft: rgba(111, 155, 245, 0.16);
+  --profit: #4bc190;
+  --loss: #e8776c;
+  --profit-bg: rgba(75, 193, 144, 0.14);
+  --loss-bg: rgba(232, 119, 108, 0.14);
+  --profit-bg-strong: rgba(75, 193, 144, 0.18);
+  --loss-bg-strong: rgba(232, 119, 108, 0.18);
+  --warning: #d9a441;
+  --warning-bg: rgba(217, 164, 65, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    --canvas: #191a1c;
+    --surface: #232426;
+    --border: #727376;
+    --text: #e7e6e3;
+    --text-secondary: #adaba5;
+    --text-tertiary: #88867f;
+    --accent: #6f9bf5;
+    --accent-soft: rgba(111, 155, 245, 0.16);
+    --profit: #4bc190;
+    --loss: #e8776c;
+    --profit-bg: rgba(75, 193, 144, 0.14);
+    --loss-bg: rgba(232, 119, 108, 0.14);
+    --profit-bg-strong: rgba(75, 193, 144, 0.18);
+    --loss-bg-strong: rgba(232, 119, 108, 0.18);
+    --warning: #d9a441;
+    --warning-bg: rgba(217, 164, 65, 0.16);
+  }
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+}

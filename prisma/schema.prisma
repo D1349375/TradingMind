@@ -1,0 +1,278 @@
+// TradeMind — Prisma schema
+// 設計依據:
+//   - TradeMind_產品規劃書.md §4.2(基礎/可選欄位庫)、§5(Bybit API)、§11(Credit)
+//   - design.md(IA、目標與風控雙模式、紀律規則可驗證/不可驗證區分)
+//   - TradeMind_裁量交易版統計驗證流程規劃.md(Setup 假設登記)
+//
+// 刻意不建的部分:TraderDebate/人格辯論相關資料表。依 10.7 節分階段定案,
+// 單一人格分析都還在 Phase 2 標配前置階段,多人格辯論室依數據決定是否投入,
+// 現在建 schema 為時過早,等功能定案再補 migration。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 對應 Supabase Auth 的 auth.users,id 用同一組 uuid(標準 Supabase+Prisma 搭配方式)
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  accounts          TradingAccount[]
+  trades            Trade[]
+  fieldDefs         CustomFieldDefinition[]
+  setups            Setup[]
+  disciplineRules   DisciplineRule[]
+  detectionSettings BehaviorDetectionSetting[]
+  behaviorAlerts    BehaviorAlert[]
+  journalEntries    JournalEntry[]
+  goal              Goal?
+  creditBalance     CreditBalance?
+  creditTxns        CreditTransaction[]
+  bybitConnection   BybitConnection?
+}
+
+// 使用者自己標記的帳號(實盤/模擬/Prop Firm),可以有多個
+model TradingAccount {
+  id        String      @id @default(uuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String // 例如「Bybit 實盤」「FTMO Challenge #1」
+  kind      AccountKind
+  createdAt DateTime    @default(now())
+
+  trades Trade[]
+}
+
+enum AccountKind {
+  LIVE
+  DEMO
+  PROP_FIRM
+}
+
+// Bybit API 唯讀金鑰連線(規劃書 5.3:AES-256-GCM 加密儲存,絕不存明文)
+model BybitConnection {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKeyCipher    String
+  apiSecretCipher String
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+// Setup 是第一級實體,不是自訂欄位的 EAV 值——因為裁量交易版驗證流程
+// 需要掛假設登記(進場邏輯+經濟機制)並依此做 PSR/DSR 統計驗證(見裁量版文件 Step B1)
+model Setup {
+  id                String    @id @default(uuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String
+  entryLogic        String? // 進場邏輯描述
+  economicRationale String? // 為什麼這個模式會重複出現;有填才視為「已登記」
+  registeredAt      DateTime? // 有 economicRationale 才進 Playbook 排行比較
+  createdAt         DateTime  @default(now())
+
+  trades Trade[]
+
+  @@index([userId])
+}
+
+model Trade {
+  id        String          @id @default(uuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String?
+  account   TradingAccount? @relation(fields: [accountId], references: [id])
+  setupId   String?
+  setup     Setup?          @relation(fields: [setupId], references: [id])
+
+  // ---- 基礎欄位(規劃書 4.2,系統自動從 API 填入,不可刪除) ----
+  openedAt     DateTime
+  closedAt     DateTime?
+  symbol       String
+  direction    Direction
+  entryPrice   Decimal
+  exitPrice    Decimal?
+  positionSize Decimal
+  leverage     Decimal?
+  fee          Decimal     @default(0)
+  realizedPnl  Decimal?
+  source       TradeSource @default(MANUAL)
+  bybitOrderId String?     @unique // 防止同步時重複建檔
+
+  // ---- 可選欄位中,結構化的先抽成真欄位;其餘走 CustomFieldValue EAV ----
+  rMultiple           Decimal?
+  grade               String? // A/B/C/D 或 1-10,存字串以兼容兩種制度
+  screenshotBeforeUrl String?
+  screenshotAfterUrl  String?
+  reflectionNote      String? // 富文本,先存 markdown/html 字串
+
+  customValues CustomFieldValue[]
+  ruleChecks   TradeRuleCheck[]
+  alerts       BehaviorAlert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, openedAt])
+  @@index([setupId])
+}
+
+enum Direction {
+  LONG
+  SHORT
+}
+
+enum TradeSource {
+  BYBIT_SYNC
+  CSV_IMPORT
+  MANUAL
+}
+
+// 使用者自訂欄位庫(規劃書 4.2 可選欄位),EAV 模式存值
+model CustomFieldDefinition {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String // 例如 "session" "emotion" —— emotion 的誠實度防護見對話紀錄,尚未定案鎖定機制,暫不加欄位
+  label     String // 顯示名稱,例如「交易時區」
+  fieldType FieldType
+  options   Json? // 單選/多選的選項清單
+  sortOrder Int       @default(0)
+
+  values CustomFieldValue[]
+
+  @@unique([userId, key])
+}
+
+enum FieldType {
+  SINGLE_SELECT
+  MULTI_SELECT
+  BOOLEAN
+  NUMBER
+  TEXT
+}
+
+model CustomFieldValue {
+  id      String                @id @default(uuid())
+  tradeId String
+  trade   Trade                 @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  fieldId String
+  field   CustomFieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  value   Json // 依 fieldType 存對應型別(字串/陣列/布林/數字)
+
+  @@unique([tradeId, fieldId])
+}
+
+// 紀律規則:區分「可驗證(系統自動算)」與「不可驗證(自陳)」——
+// 對話結論:可驗證的規則不該讓使用者自己勾,由系統從 Trade 資料算,不進這張表
+model DisciplineRule {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label          String
+  isAutoDetected Boolean  @default(false)
+  presetPackId   String? // 若來自預設包,記錄包名方便之後更新
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  checks TradeRuleCheck[]
+}
+
+// 僅「不可驗證」的規則需要這張表存使用者自己勾的結果
+model TradeRuleCheck {
+  id      String         @id @default(uuid())
+  tradeId String
+  trade   Trade          @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  ruleId  String
+  rule    DisciplineRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  checked Boolean
+
+  @@unique([tradeId, ruleId])
+}
+
+// 行為偵測開關(復仇交易/上頭/連續虧損/單筆風險超標),含閾值參數
+model BehaviorDetectionSetting {
+  id        String        @id @default(uuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      DetectionKind
+  enabled   Boolean       @default(true)
+  threshold Json? // 各偵測類型自己的參數(例如倍數、時間窗口分鐘數)
+
+  @@unique([userId, kind])
+}
+
+enum DetectionKind {
+  REVENGE_TRADING
+  TILT_OVERTRADING
+  LOSING_STREAK
+  OVERSIZED_RISK
+}
+
+model BehaviorAlert {
+  id        String        @id @default(uuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tradeId   String?
+  trade     Trade?        @relation(fields: [tradeId], references: [id])
+  kind      DetectionKind
+  detail    String
+  createdAt DateTime      @default(now())
+}
+
+// 每日日記(盤前計劃/盤後反思)
+model JournalEntry {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date              DateTime @db.Date
+  preMarketPlan     String?
+  postSessionReview String?
+
+  @@unique([userId, date])
+}
+
+// 目標與風控:每日虧損上限支援固定金額 / 資金比例雙模式(2026-08-11 對話定案)
+model Goal {
+  id                       String        @id @default(uuid())
+  userId                   String        @unique
+  user                     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lossLimitMode            LossLimitMode @default(FIXED)
+  dailyLossFixed           Decimal?
+  dailyLossPercent         Decimal?
+  totalCapital             Decimal?
+  profitTargetAmount       Decimal?
+  profitTargetPeriodStart  DateTime?
+  updatedAt                DateTime      @updatedAt
+}
+
+enum LossLimitMode {
+  FIXED
+  PERCENT
+}
+
+// Credit 點數(規劃書 §11)
+model CreditBalance {
+  userId      String @id
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance     Int    @default(50) // Free 方案贈送額度
+  totalEarned Int    @default(50)
+  totalSpent  Int    @default(0)
+}
+
+model CreditTransaction {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Int // 正=獲得,負=消耗
+  reason    String // 例如 "single_persona_analysis" "monthly_grant"
+  createdAt DateTime @default(now())
+}
