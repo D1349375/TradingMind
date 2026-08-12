@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
+    // 沒指定 target 的話 TS 預設 ES5,Set/Map 的展開與迭代都會被擋。
+    // Next 實際轉譯走 SWC 有自己的 browserslist,這裡只影響型別檢查。
+    "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,

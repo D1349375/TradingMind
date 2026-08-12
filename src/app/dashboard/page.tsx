@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -22,14 +23,22 @@ export default async function DashboardPage() {
               已登入:{user.email}
             </p>
           </div>
-          <form action="/auth/signout" method="post">
-            <button
-              type="submit"
+          <div className="flex items-center gap-2">
+            <Link
+              href="/settings"
               className="rounded border border-border bg-surface px-3 py-1.5 text-[0.84rem] text-text transition-colors hover:border-accent hover:text-accent"
             >
-              登出
-            </button>
-          </form>
+              設定
+            </Link>
+            <form action="/auth/signout" method="post">
+              <button
+                type="submit"
+                className="rounded border border-border bg-surface px-3 py-1.5 text-[0.84rem] text-text transition-colors hover:border-accent hover:text-accent"
+              >
+                登出
+              </button>
+            </form>
+          </div>
         </div>
 
         <div className="rounded border border-border bg-surface px-5 py-6">
