@@ -1,14 +1,13 @@
-// 起始頁佔位——確認 design.md 的 token 有正確接到 Tailwind。
-// 真正的 Dashboard 頁面留到規劃書建置順序圖的第 ⑥ 步(交易記錄頁)之後再做。
-export default function Home() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-canvas">
-      <div className="rounded border border-border bg-surface px-8 py-6 text-center">
-        <div className="mb-1 text-lg font-semibold text-text">TradeMind</div>
-        <div className="text-sm text-text-secondary">
-          專案骨架已就緒,等待資料庫連線與身份驗證接上。
-        </div>
-      </div>
-    </main>
-  );
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+
+// 首頁目前不做行銷落地頁,直接依登入狀態分流。
+// 之後要做對外的產品介紹頁時,再把這裡換成實際內容。
+export default async function Home() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  redirect(user ? "/dashboard" : "/login");
 }
