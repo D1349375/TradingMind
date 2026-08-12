@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getCurrentUser } from "@/lib/auth";
 import { BybitConnection } from "@/components/settings/bybit-connection";
 
 export const metadata: Metadata = {
@@ -22,14 +20,12 @@ export default async function SettingsPage({
 }: {
   searchParams: { tab?: string };
 }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-
+  // 登入檢查在 (app)/layout.tsx 統一處理
   const active =
     TABS.find((t) => t.key === searchParams.tab)?.key ?? "exchange";
 
   return (
-    <main className="min-h-screen bg-canvas px-9 py-8">
+    <div className="px-9 py-8">
       <div className="mx-auto max-w-[1180px]">
         <div className="mb-5">
           <h1 className="text-[1.4rem] font-semibold">設定</h1>
@@ -72,6 +68,6 @@ export default async function SettingsPage({
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }
