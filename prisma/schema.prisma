@@ -94,7 +94,12 @@ model Trade {
   setup     Setup?          @relation(fields: [setupId], references: [id])
 
   // ---- 基礎欄位(規劃書 4.2,系統自動從 API 填入,不可刪除) ----
-  openedAt     DateTime
+  // openedAt 可為 null:Bybit 的 closed-pnl 查不到「持倉開倉時間」——
+  // 該端點的 createdTime 實測是「平倉委託建立時間」(市價平倉時與 updatedTime
+  // 只差幾毫秒),不是開倉時間。真正的開倉時間要從 /v5/execution/list 逐筆配對
+  // 還原,屬於獨立功能;在那之前寧可留 null,也不要塞一個會讓「持倉時間」
+  // 統計出錯的假值。手動建立/CSV 匯入的交易則可以直接填。
+  openedAt     DateTime?
   closedAt     DateTime?
   symbol       String
   direction    Direction
@@ -121,7 +126,8 @@ model Trade {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId, openedAt])
+  // 以平倉時間建索引:損益是在平倉當下實現的,日曆/每日損益/排序都以此為準
+  @@index([userId, closedAt])
   @@index([setupId])
 }
 

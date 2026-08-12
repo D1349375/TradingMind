@@ -16,6 +16,8 @@ export function BybitConnection() {
   const [apiSecret, setApiSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/exchange/bybit")
@@ -46,6 +48,31 @@ export function BybitConnection() {
     setApiKey("");
     setApiSecret("");
     setBusy(false);
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    setError(null);
+    setSyncResult(null);
+
+    const res = await fetch("/api/sync", { method: "POST" });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error ?? "同步失敗");
+      setSyncing(false);
+      return;
+    }
+
+    setSyncResult(
+      data.fetched === 0
+        ? "最近 7 天沒有已平倉的交易"
+        : `取回 ${data.fetched} 筆,新增 ${data.created} 筆,已存在 ${data.skipped} 筆`,
+    );
+    // 重新讀取連線狀態,更新「上次同步」時間
+    const refreshed = await fetch("/api/exchange/bybit").then((r) => r.json());
+    setState(refreshed);
+    setSyncing(false);
   }
 
   async function handleDisconnect() {
@@ -81,15 +108,43 @@ export function BybitConnection() {
               {state.maskedApiKey}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleDisconnect}
-            disabled={busy}
-            className="shrink-0 rounded border border-border bg-surface px-3 py-1.5 text-[0.82rem] text-text transition-colors hover:border-loss hover:text-loss disabled:opacity-50"
-          >
-            {busy ? "處理中…" : "中斷連線"}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={syncing || busy}
+              className="rounded bg-accent px-3 py-1.5 text-[0.82rem] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {syncing ? "同步中…" : "立即同步"}
+            </button>
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              disabled={busy || syncing}
+              className="rounded border border-border bg-surface px-3 py-1.5 text-[0.82rem] text-text transition-colors hover:border-loss hover:text-loss disabled:opacity-50"
+            >
+              {busy ? "處理中…" : "中斷連線"}
+            </button>
+          </div>
         </div>
+
+        {syncResult && (
+          <div
+            role="status"
+            className="mb-4 rounded border border-profit bg-profit-bg px-3 py-2 text-[0.82rem] text-profit"
+          >
+            {syncResult}
+          </div>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 rounded border border-loss bg-loss-bg px-3 py-2 text-[0.82rem] leading-relaxed text-loss"
+          >
+            {error}
+          </div>
+        )}
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 border-t border-border pt-4 text-[0.82rem]">
           <div className="flex justify-between">

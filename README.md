@@ -31,6 +31,8 @@ rm -rf .next && npm run dev
 
 要驗證 production build 前,先停掉 dev server。
 
+**改完 schema 跑 `prisma migrate` / `prisma generate` 之後,要重啟 dev server。** 執行中的 dev server 會把舊版 Prisma Client 留在記憶體裡,新欄位/新的 nullable 設定不會生效,而且錯誤訊息會非常誤導(例如欄位可為 null 的改動沒生效時,會報成 ``Argument `user` is missing``,跟真正的原因無關)。
+
 ## 目錄說明
 
 - `prisma/schema.prisma` — 資料庫 schema,設計依據見檔案開頭註解

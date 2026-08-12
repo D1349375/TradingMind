@@ -174,17 +174,23 @@ function collectRiskyPermissions(
 export type ClosedPnlItem = {
   orderId: string;
   symbol: string;
-  side: string; // "Buy" | "Sell" —— 這是平倉方向,持倉方向要反過來
+  // 這是「平倉委託」的方向,不是持倉方向:
+  //   side="Sell" → 賣出平倉 → 這筆其實是「多單」
+  //   side="Buy"  → 買入平倉 → 這筆其實是「空單」
+  // 換算在 sync.ts 的 toDirection(),不要直接拿這個欄位當多空用。
+  side: string;
   qty: string;
   orderPrice: string;
   avgEntryPrice: string;
   avgExitPrice: string;
   closedPnl: string;
   leverage: string;
+  openFee: string;
+  closeFee: string;
   cumEntryValue: string;
   cumExitValue: string;
-  createdTime: string; // ms epoch
-  updatedTime: string;
+  createdTime: string; // ms epoch,開倉時間
+  updatedTime: string; // ms epoch,平倉時間
 };
 
 // 已平倉損益,是交易紀錄的主要資料源(規劃書 §5.1)
