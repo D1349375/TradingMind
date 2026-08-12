@@ -18,6 +18,19 @@ Next.js 14(App Router)+ TypeScript + Tailwind + shadcn/ui + Prisma + Supabase(Po
 3. `npx prisma migrate dev` 建立資料表
 4. `npm run dev`
 
+## 開發注意事項
+
+**不要在 `npm run dev` 還跑著的時候執行 `npm run build`。** 兩者共用同一個 `.next` 目錄,production build 會覆蓋掉 dev server 正在使用的 chunk,導致頁面變成完全沒有樣式的裸 HTML(CSS 與 JS 都 404,終端機出現 `Cannot find module './948.js'`)。
+
+真的發生時的修復方式:
+
+```bash
+# 停掉 dev server,然後
+rm -rf .next && npm run dev
+```
+
+要驗證 production build 前,先停掉 dev server。
+
 ## 目錄說明
 
 - `prisma/schema.prisma` — 資料庫 schema,設計依據見檔案開頭註解
