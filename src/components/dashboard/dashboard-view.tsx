@@ -5,9 +5,11 @@ import {
   equityCurve,
   groupByLocalDay,
   summarise,
+  type NamedTradePoint,
   type TradePoint,
 } from "@/lib/stats";
 import { GoalCards, type GoalState } from "@/components/dashboard/goal-cards";
+import { PerformanceView } from "@/components/dashboard/performance-view";
 
 function fmt(n: number, digits = 2) {
   return n.toLocaleString("en-US", {
@@ -20,13 +22,20 @@ function signed(n: number, digits = 2) {
   return `${n >= 0 ? "+" : ""}${fmt(n, digits)}`;
 }
 
+const DASH_TABS = [
+  { key: "overview", label: "總覽" },
+  { key: "performance", label: "績效分析" },
+] as const;
+type DashTab = (typeof DASH_TABS)[number]["key"];
+
 export function DashboardView({
   trades,
   goals,
 }: {
-  trades: TradePoint[];
+  trades: NamedTradePoint[];
   goals: GoalState;
 }) {
+  const [tab, setTab] = useState<DashTab>("overview");
   const summary = useMemo(() => summarise(trades), [trades]);
   const curve = useMemo(() => equityCurve(trades), [trades]);
 
@@ -69,17 +78,41 @@ export function DashboardView({
 
   return (
     <>
-      <StatGrid summary={summary} />
-      <div suppressHydrationWarning>
-        {mounted && (
-          <GoalCards goals={goals} todayLoss={todayLoss} monthPnl={monthPnl} />
-        )}
+      <div className="mb-5 flex items-center gap-5 border-b border-border">
+        {DASH_TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            aria-current={tab === t.key}
+            className={
+              tab === t.key
+                ? "-mb-px border-b-2 border-accent pb-2 text-[0.9rem] font-semibold text-text"
+                : "-mb-px border-b-2 border-transparent pb-2 text-[0.9rem] text-text-secondary hover:text-text"
+            }
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-      <div className="mb-4 grid grid-cols-[1.4fr_1fr] gap-4">
-        <EquityChart curve={curve} />
-        <WinLossCard summary={summary} />
-      </div>
-      <CalendarCard trades={trades} />
+
+      {tab === "overview" ? (
+        <>
+          <StatGrid summary={summary} />
+          <div suppressHydrationWarning>
+            {mounted && (
+              <GoalCards goals={goals} todayLoss={todayLoss} monthPnl={monthPnl} />
+            )}
+          </div>
+          <div className="mb-4 grid grid-cols-[1.4fr_1fr] gap-4">
+            <EquityChart curve={curve} />
+            <WinLossCard summary={summary} />
+          </div>
+          <CalendarCard trades={trades} />
+        </>
+      ) : (
+        <PerformanceView trades={trades} totalCapital={goals.totalCapital} />
+      )}
     </>
   );
 }

@@ -87,6 +87,151 @@ export function maxDrawdown(equity: number[]): number {
   return worst;
 }
 
+export type NamedTradePoint = TradePoint & { symbol: string };
+
+// 每日損益(依平倉時間排序,供長條圖用)。跟 groupByLocalDay 分組邏輯共用,
+// 但回傳陣列(有序)而不是 Map,方便直接畫圖。
+export function dailyPnlSeries(
+  trades: TradePoint[],
+): { date: string; pnl: number; count: number }[] {
+  const byDay = groupByLocalDay(trades);
+  return [...byDay.entries()]
+    .map(([date, v]) => ({ date, pnl: v.pnl, count: v.count }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export type HistogramBucket = { rangeLabel: string; count: number; rangeStart: number; rangeEnd: number };
+
+// 把一組數值切成等寬 bucket。全部值相同時(range=0)回傳單一 bucket,
+// 避免除以零。
+function histogram(values: number[], bucketCount: number, unit: string): HistogramBucket[] {
+  if (values.length === 0) return [];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+  if (range === 0) {
+    return [{ rangeLabel: `${min.toFixed(1)}${unit}`, count: values.length, rangeStart: min, rangeEnd: max }];
+  }
+  const width = range / bucketCount;
+  const buckets: HistogramBucket[] = Array.from({ length: bucketCount }, (_, i) => {
+    const start = min + i * width;
+    const end = i === bucketCount - 1 ? max : start + width;
+    return { rangeLabel: `${start.toFixed(1)}~${end.toFixed(1)}${unit}`, count: 0, rangeStart: start, rangeEnd: end };
+  });
+  for (const v of values) {
+    const idx = Math.min(bucketCount - 1, Math.floor(((v - min) / range) * bucketCount));
+    buckets[idx].count++;
+  }
+  return buckets;
+}
+
+// 損益分布直方圖:只算已平倉、有損益的交易。
+export function pnlHistogram(trades: TradePoint[], bucketCount = 10): HistogramBucket[] {
+  const values = trades
+    .map((t) => t.realizedPnl)
+    .filter((p): p is number => p !== null);
+  return histogram(values, bucketCount, "U");
+}
+
+// R 分布直方圖:只算有填 R 值的交易——大部分同步交易缺止損價算不出 R,
+// 樣本可能很小,由呼叫端決定要不要顯示樣本數警語。
+export function rHistogram(trades: TradePoint[], bucketCount = 10): HistogramBucket[] {
+  const values = trades
+    .map((t) => t.rMultiple)
+    .filter((r): r is number => r !== null);
+  return histogram(values, bucketCount, "R");
+}
+
+// 最佳/最差 N 筆交易,依已實現損益排序。
+export function topTrades(
+  trades: NamedTradePoint[],
+  n: number,
+): { best: NamedTradePoint[]; worst: NamedTradePoint[] } {
+  const settled = trades.filter((t) => t.realizedPnl !== null);
+  const sorted = [...settled].sort(
+    (a, b) => (b.realizedPnl as number) - (a.realizedPnl as number),
+  );
+  return {
+    best: sorted.slice(0, n),
+    worst: sorted.slice(-n).reverse(),
+  };
+}
+
+export type RuinSimResult = {
+  available: boolean;
+  unavailableReason?: string;
+  sampleSize: number;
+  horizonTrades: number;
+  ruinThresholdPct: number; // 例如 50 表示「跌破起始資金 50%」
+  ruinProbabilityPct: number | null; // 0-100
+};
+
+// 破產風險:用歷史交易的「損益占帳戶總資金比例」自助抽樣(bootstrap)重放,
+// 不是套一個現成公式硬算——好處是不需要止損價/風險%這些我們拿不到的欄位,
+// 缺點是假設「未來的交易分布跟過去一樣」,樣本越小這個假設越不可靠,
+// 所以樣本 < 20 筆時直接不給數字,只說明需要更多資料。
+export function simulateRuinRisk(
+  trades: TradePoint[],
+  totalCapital: number | null,
+  opts: { horizonTrades?: number; ruinThresholdPct?: number; simulations?: number } = {},
+): RuinSimResult {
+  const horizonTrades = opts.horizonTrades ?? 100;
+  const ruinThresholdPct = opts.ruinThresholdPct ?? 50;
+  const simulations = opts.simulations ?? 2000;
+
+  const pnls = trades
+    .map((t) => t.realizedPnl)
+    .filter((p): p is number => p !== null);
+
+  if (!totalCapital || totalCapital <= 0) {
+    return {
+      available: false,
+      unavailableReason: "需要先在「設定 → 目標設定」填寫帳戶總資金,才能把損益換算成報酬率模擬。",
+      sampleSize: pnls.length,
+      horizonTrades,
+      ruinThresholdPct,
+      ruinProbabilityPct: null,
+    };
+  }
+  if (pnls.length < 20) {
+    return {
+      available: false,
+      unavailableReason: `目前只有 ${pnls.length} 筆已平倉交易,樣本太少(建議至少 20 筆),自助抽樣模擬出來的機率不可靠。`,
+      sampleSize: pnls.length,
+      horizonTrades,
+      ruinThresholdPct,
+      ruinProbabilityPct: null,
+    };
+  }
+
+  // 每筆交易的報酬率(相對帳戶總資金),bootstrap 抽樣時直接複利相乘
+  const returns = pnls.map((p) => 1 + p / totalCapital);
+  const threshold = 1 - ruinThresholdPct / 100;
+
+  let ruinCount = 0;
+  for (let s = 0; s < simulations; s++) {
+    let equity = 1;
+    let hit = false;
+    for (let i = 0; i < horizonTrades; i++) {
+      const r = returns[Math.floor(Math.random() * returns.length)];
+      equity *= r;
+      if (equity <= threshold) {
+        hit = true;
+        break;
+      }
+    }
+    if (hit) ruinCount++;
+  }
+
+  return {
+    available: true,
+    sampleSize: pnls.length,
+    horizonTrades,
+    ruinThresholdPct,
+    ruinProbabilityPct: (ruinCount / simulations) * 100,
+  };
+}
+
 // 依「本地日期」分組的每日損益。
 // 分組必須在瀏覽器端做——交易時間存的是 UTC,但使用者認知的「哪一天」
 // 是自己的時區;在伺服器分組會讓跨午夜的交易歸錯天。

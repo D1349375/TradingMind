@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { TradePoint } from "@/lib/stats";
+import type { NamedTradePoint } from "@/lib/stats";
 
 export const metadata: Metadata = {
   title: "Dashboard · TradeMind",
@@ -14,7 +14,7 @@ export default async function DashboardPage() {
   const [rows, conn, goal] = await Promise.all([
     prisma.trade.findMany({
       where: { userId: user!.id },
-      select: { closedAt: true, realizedPnl: true, rMultiple: true },
+      select: { symbol: true, closedAt: true, realizedPnl: true, rMultiple: true },
       orderBy: { closedAt: "asc" },
     }),
     prisma.bybitConnection.findUnique({
@@ -37,7 +37,8 @@ export default async function DashboardPage() {
   };
 
   // Decimal / Date 不能直接送進 client component
-  const trades: TradePoint[] = rows.map((t) => ({
+  const trades: NamedTradePoint[] = rows.map((t) => ({
+    symbol: t.symbol,
     closedAt: t.closedAt?.toISOString() ?? null,
     realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
     rMultiple: t.rMultiple === null ? null : Number(t.rMultiple),

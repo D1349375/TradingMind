@@ -7,6 +7,7 @@ import {
   type FieldValues,
 } from "@/components/trades/custom-fields";
 import { SetupPicker, type SetupOption } from "@/components/trades/setup-picker";
+import { AiAnalysis } from "@/components/trades/ai-analysis";
 
 // 對應 prototype/index.html 的 .trades-layout(左列表 / 右詳情)。
 
@@ -197,6 +198,7 @@ const DETAIL_TABS = [
   { key: "fields", label: "自訂欄位" },
   { key: "note", label: "反思筆記" },
   { key: "shots", label: "截圖" },
+  { key: "ai", label: "AI 分析" },
 ] as const;
 type DetailTab = (typeof DETAIL_TABS)[number]["key"];
 
@@ -506,6 +508,13 @@ function TradeDetail({
         <p className="mt-1.5 text-[0.75rem] text-text-tertiary">
           圖片上傳需要接 Supabase Storage,尚未實作。
         </p>
+      </section>
+
+      <section className={tab === "ai" ? "mb-6" : "hidden"}>
+        <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
+          單一人格交易分析
+        </h3>
+        <AiAnalysis tradeId={trade.id} />
       </section>
 
       <section className={tab === "note" ? "" : "hidden"}>

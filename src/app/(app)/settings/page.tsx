@@ -5,13 +5,13 @@ import { GoalSettings } from "@/components/settings/goal-settings";
 import { FieldBuilder } from "@/components/settings/field-builder";
 import { DisciplineRules } from "@/components/settings/discipline-rules";
 import { BehaviorDetection } from "@/components/settings/behavior-detection";
+import { NotificationSettings } from "@/components/settings/notification-settings";
 
 export const metadata: Metadata = {
   title: "設定 · TradeMind",
 };
 
 // 分頁對應 prototype/index.html 的設定頁六分頁。
-// 「通知設定」照建置順序之後補。
 const TABS = [
   { key: "exchange", label: "交易所連線" },
   { key: "fields", label: "欄位自訂" },
@@ -78,14 +78,7 @@ export default async function SettingsPage({
           ) : active === "detection" ? (
             <BehaviorDetection />
           ) : (
-            <div className="rounded border border-border bg-surface px-5 py-10 text-center">
-              <div className="mb-1 text-[0.9rem] font-semibold text-text-secondary">
-                尚未實作
-              </div>
-              <p className="text-[0.82rem] text-text-secondary">
-                版面設計已在 prototype/index.html 定稿,依建置順序後續補上。
-              </p>
-            </div>
+            <NotificationSettings />
           )}
         </div>
       </div>

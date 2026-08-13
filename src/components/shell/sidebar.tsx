@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { isTodayLossDanger, type GoalForAlert } from "@/lib/notifications";
 
 // 對應 prototype/index.html 的側邊欄。
 // 尺寸一律固定 px(design.md 第三節:介面外殼不隨內容字級縮放)。
@@ -165,9 +166,15 @@ const DEFAULT_WIDTH = 232;
 export function Sidebar({
   email,
   credits,
+  pendingReview,
+  recentTrades,
+  goal,
 }: {
   email: string;
   credits: number;
+  pendingReview: number;
+  recentTrades: { closedAt: string | null; realizedPnl: number | null }[];
+  goal: GoalForAlert;
 }) {
   const pathname = usePathname();
   const [scale, setScale] = useState("15.5");
@@ -176,6 +183,12 @@ export function Sidebar({
   const [dragging, setDragging] = useState(false);
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
   const collapsed = width <= COLLAPSE_THRESHOLD;
+
+  // 通知開關存 localStorage(跟主題/字級一樣是純前端偏好,不需要進資料庫),
+  // 設定頁的「通知設定」分頁改這兩個 key。
+  const [mounted, setMounted] = useState(false);
+  const [notifyReview, setNotifyReview] = useState(true);
+  const [notifyLossDanger, setNotifyLossDanger] = useState(true);
 
   useEffect(() => {
     setScale(localStorage.getItem("tm-scale") ?? "15.5");
@@ -187,7 +200,33 @@ export function Sidebar({
     );
     const storedWidth = Number(localStorage.getItem("tm-sidebar-width"));
     if (storedWidth) setWidth(storedWidth);
+    setNotifyReview(localStorage.getItem("tm-notif-review") !== "off");
+    setNotifyLossDanger(localStorage.getItem("tm-notif-lossdanger") !== "off");
+    setMounted(true);
   }, []);
+
+  // 「今日虧損」是本地時區概念,必須掛載後用瀏覽器時區篩,不能信伺服器算好的「今天」。
+  const todayLoss = useMemo(() => {
+    if (!mounted) return 0;
+    const now = new Date();
+    let loss = 0;
+    for (const t of recentTrades) {
+      if (!t.closedAt || t.realizedPnl === null) continue;
+      const d = new Date(t.closedAt);
+      if (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate() &&
+        t.realizedPnl < 0
+      ) {
+        loss += -t.realizedPnl;
+      }
+    }
+    return loss;
+  }, [mounted, recentTrades]);
+
+  const lossDanger = mounted && notifyLossDanger && isTodayLossDanger(todayLoss, goal);
+  const reviewBadge = mounted && notifyReview && pendingReview > 0 ? String(pendingReview) : null;
 
   function startDrag(e: React.PointerEvent) {
     e.preventDefault();
@@ -303,23 +342,50 @@ export function Sidebar({
                   </div>
                 );
               }
+              // 動態通知徽章:交易記錄=待補充筆數、Dashboard=今日虧損逼近上限。
+              // 跟原本「Phase 2」那種靜態灰色徽章分開處理,顏色要跳出來才有警示感。
+              const reviewDot = item.label === "交易記錄" && reviewBadge;
+              const lossDot = item.label === "Dashboard" && lossDanger;
               return (
                 <Link
                   key={item.label}
                   href={item.href}
-                  title={collapsed ? item.label : undefined}
+                  title={
+                    collapsed
+                      ? [item.label, reviewDot && `${reviewBadge} 筆待補充`, lossDot && "今日虧損逼近上限"]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : undefined
+                  }
                   className={
                     active
                       ? `${base} bg-accent-soft font-bold text-accent`
                       : `${base} text-text-secondary hover:bg-surface hover:text-text`
                   }
                 >
-                  {item.icon}
+                  <span className="relative h-4 w-4 shrink-0 [&>svg]:h-4 [&>svg]:w-4">
+                    {item.icon}
+                    {collapsed && (reviewDot || lossDot) && (
+                      <span
+                        className={`absolute -right-0.5 -top-0.5 h-[7px] w-[7px] rounded-full border border-canvas ${
+                          lossDot ? "bg-loss" : "bg-accent"
+                        }`}
+                      />
+                    )}
+                  </span>
                   {!collapsed && item.label}
                   {!collapsed && item.badge && (
                     <span className="ml-auto whitespace-nowrap rounded-[3px] border border-border px-1 py-[1.5px] text-[9.5px] text-text-tertiary">
                       {item.badge}
                     </span>
+                  )}
+                  {!collapsed && reviewDot && (
+                    <span className="ml-auto whitespace-nowrap rounded-full bg-accent px-1.5 py-[1.5px] text-[9.5px] font-bold text-white">
+                      {reviewBadge}
+                    </span>
+                  )}
+                  {!collapsed && lossDot && (
+                    <span className="ml-auto h-[7px] w-[7px] shrink-0 rounded-full bg-loss" />
                   )}
                 </Link>
               );
