@@ -45,7 +45,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
       },
       {
         label: "日曆視圖",
-        badge: "待實作",
+        href: "/calendar",
         icon: icon(
           <>
             <rect x="3" y="4" width="14" height="13" rx="1.5" />
@@ -57,7 +57,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
       },
       {
         label: "Setup 分析",
-        badge: "Phase 2",
+        href: "/setup",
         icon: icon(
           <>
             <line x1="4" y1="17" x2="4" y2="10" />
@@ -68,7 +68,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
       },
       {
         label: "心態分析",
-        badge: "Phase 2",
+        href: "/psychology",
         icon: icon(
           <>
             <circle cx="10" cy="10" r="7" />

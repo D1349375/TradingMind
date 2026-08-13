@@ -2,7 +2,14 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // 需要登入才能看的路徑前綴
-const PROTECTED_PREFIXES = ["/dashboard", "/trades", "/calendar", "/settings"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/trades",
+  "/calendar",
+  "/setup",
+  "/psychology",
+  "/settings",
+];
 // 已登入就不該再看到的路徑
 const AUTH_ROUTES = ["/login", "/signup"];
 

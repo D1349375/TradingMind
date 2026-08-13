@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default async function DashboardPage() {
   const user = await getCurrentUser();
 
-  const [rows, conn] = await Promise.all([
+  const [rows, conn, goal] = await Promise.all([
     prisma.trade.findMany({
       where: { userId: user!.id },
       select: { closedAt: true, realizedPnl: true, rMultiple: true },
@@ -21,7 +21,20 @@ export default async function DashboardPage() {
       where: { userId: user!.id },
       select: { lastSyncedAt: true },
     }),
+    prisma.goal.findUnique({ where: { userId: user!.id } }),
   ]);
+
+  const goals = {
+    lossLimitMode: goal?.lossLimitMode ?? "FIXED",
+    dailyLossFixed: goal?.dailyLossFixed ? Number(goal.dailyLossFixed) : null,
+    dailyLossPercent: goal?.dailyLossPercent
+      ? Number(goal.dailyLossPercent)
+      : null,
+    totalCapital: goal?.totalCapital ? Number(goal.totalCapital) : null,
+    profitTargetAmount: goal?.profitTargetAmount
+      ? Number(goal.profitTargetAmount)
+      : null,
+  };
 
   // Decimal / Date 不能直接送進 client component
   const trades: TradePoint[] = rows.map((t) => ({
@@ -41,7 +54,7 @@ export default async function DashboardPage() {
               : "尚未同步"}
           </p>
         </div>
-        <DashboardView trades={trades} />
+        <DashboardView trades={trades} goals={goals} />
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import {
   summarise,
   type TradePoint,
 } from "@/lib/stats";
+import { GoalCards, type GoalState } from "@/components/dashboard/goal-cards";
 
 function fmt(n: number, digits = 2) {
   return n.toLocaleString("en-US", {
@@ -19,9 +20,39 @@ function signed(n: number, digits = 2) {
   return `${n >= 0 ? "+" : ""}${fmt(n, digits)}`;
 }
 
-export function DashboardView({ trades }: { trades: TradePoint[] }) {
+export function DashboardView({
+  trades,
+  goals,
+}: {
+  trades: TradePoint[];
+  goals: GoalState;
+}) {
   const summary = useMemo(() => summarise(trades), [trades]);
   const curve = useMemo(() => equityCurve(trades), [trades]);
+
+  // 今日/本月都是「使用者本地時區」的概念,必須在瀏覽器端算,
+  // 否則跨午夜的交易會被歸到錯誤的一天(跟日曆分組同一個理由)。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const { todayLoss, monthPnl } = useMemo(() => {
+    const now = new Date();
+    let todayPnl = 0;
+    let month = 0;
+    for (const t of trades) {
+      if (!t.closedAt || t.realizedPnl === null) continue;
+      const d = new Date(t.closedAt);
+      if (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth()
+      ) {
+        month += t.realizedPnl;
+        if (d.getDate() === now.getDate()) todayPnl += t.realizedPnl;
+      }
+    }
+    // 今日淨損益為正時,當天沒有消耗風控額度
+    return { todayLoss: todayPnl < 0 ? -todayPnl : 0, monthPnl: month };
+  }, [trades]);
 
   if (trades.length === 0) {
     return (
@@ -38,6 +69,13 @@ export function DashboardView({ trades }: { trades: TradePoint[] }) {
 
   return (
     <>
+      {/* 目標與風控排在統計格前面:它回答「現在要不要緊」,
+          比回顧型的統計更急迫(見 design.md 第六節) */}
+      <div suppressHydrationWarning>
+        {mounted && (
+          <GoalCards goals={goals} todayLoss={todayLoss} monthPnl={monthPnl} />
+        )}
+      </div>
       <StatGrid summary={summary} />
       <div className="mb-4 grid grid-cols-[1.4fr_1fr] gap-4">
         <EquityChart curve={curve} />
