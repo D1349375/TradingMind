@@ -75,6 +75,41 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ============ 捲軸 ============
+   預設捲軸在深色模式下是亮白的,跟整體介面衝突。
+   用既有 token 重新著色,不另外發明顏色。
+   Firefox 走 scrollbar-color,Chromium/Safari 走 ::-webkit-scrollbar。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 999px;
+  /* 用透明邊框把滑塊做細,同時保留較大的可點擊範圍 */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-tertiary);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
