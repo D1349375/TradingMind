@@ -10,6 +10,8 @@ export type AnalysisTrade = {
   realizedPnl: number | null;
   rMultiple: number | null;
   setupName: string | null;
+  /** 自訂欄位值,以欄位 key 索引(session / timeframe / tradeType 等) */
+  fieldsByKey: Record<string, unknown>;
 };
 
 type Row = {
@@ -63,54 +65,80 @@ function aggregate(
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
-// 每個維度都標明資料來源,算不出來的維度直接說明缺什麼,不要假裝有資料
-const DIMENSIONS = [
-  {
-    key: "symbol",
-    label: "商品",
-    available: true,
-    keyOf: (t: AnalysisTrade) => t.symbol,
-  },
-  {
-    key: "weekday",
-    label: "星期幾",
-    available: true,
-    note: "依平倉日(本地時區)分組",
-    keyOf: (t: AnalysisTrade) =>
-      t.closedAt ? WEEKDAYS[new Date(t.closedAt).getDay()] : null,
-  },
-  {
-    key: "session",
-    label: "交易時段",
-    available: false,
-    missing:
-      "交易時段要依「進場時間」判斷,但 Bybit 的已平倉損益不提供開倉時間,需先從撮合明細還原。",
-  },
-  {
-    key: "timeframe",
-    label: "時間週期",
-    available: false,
-    missing: "做單週期是自訂欄位,需先在「設定 → 欄位自訂」建立並於每筆交易標記。",
-  },
-  {
-    key: "type",
-    label: "交易類型",
-    available: false,
-    missing: "交易類型是自訂欄位,需先在「設定 → 欄位自訂」建立並於每筆交易標記。",
-  },
-] as const;
+type Dimension = {
+  key: string;
+  label: string;
+  available: boolean;
+  note?: string;
+  missing?: string;
+  keyOf?: (t: AnalysisTrade) => string | null;
+};
 
-export function SetupView({ trades }: { trades: AnalysisTrade[] }) {
+// 取自訂欄位的值當分組鍵。多選欄位會讓一筆交易同時落入多個分組,
+// 那需要不同的彙總方式,這裡先只支援單選欄位取單一值。
+function fieldKeyOf(key: string) {
+  return (t: AnalysisTrade) => {
+    const v = t.fieldsByKey[key];
+    if (v === null || v === undefined || v === "") return null;
+    if (Array.isArray(v)) return v.length ? v.join(" · ") : null;
+    if (typeof v === "boolean") return v ? "是" : "否";
+    return String(v);
+  };
+}
+
+// 每個維度都標明資料來源。自訂欄位維度是否可用,取決於使用者有沒有啟用該欄位——
+// 沒啟用就說明去哪裡啟用,不要假裝有資料。
+function buildDimensions(enabledKeys: Set<string>): Dimension[] {
+  const custom = (
+    key: string,
+    label: string,
+    fieldLabel: string,
+  ): Dimension =>
+    enabledKeys.has(key)
+      ? { key, label, available: true, keyOf: fieldKeyOf(key) }
+      : {
+          key,
+          label,
+          available: false,
+          missing: `${label}來自自訂欄位「${fieldLabel}」。到「設定 → 欄位自訂」啟用它,並在交易記錄頁逐筆標記後,這裡就會有資料。`,
+        };
+
+  return [
+    { key: "symbol", label: "商品", available: true, keyOf: (t) => t.symbol },
+    {
+      key: "weekday",
+      label: "星期幾",
+      available: true,
+      note: "依平倉日(本地時區)分組",
+      keyOf: (t) =>
+        t.closedAt ? WEEKDAYS[new Date(t.closedAt).getDay()] : null,
+    },
+    custom("session", "交易時段", "交易時區"),
+    custom("timeframe", "時間週期", "做單週期"),
+    custom("tradeType", "交易類型", "交易類型"),
+  ];
+}
+
+export function SetupView({
+  trades,
+  enabledFieldKeys,
+}: {
+  trades: AnalysisTrade[];
+  enabledFieldKeys: string[];
+}) {
   const [dim, setDim] = useState<string>("symbol");
-  const active = DIMENSIONS.find((d) => d.key === dim)!;
+  const DIMENSIONS = useMemo(
+    () => buildDimensions(new Set(enabledFieldKeys)),
+    [enabledFieldKeys],
+  );
+  const active = DIMENSIONS.find((d) => d.key === dim) ?? DIMENSIONS[0];
 
   const setupRows = useMemo(
     () => aggregate(trades, (t) => t.setupName),
     [trades],
   );
   const dimRows = useMemo(
-    () =>
-      "keyOf" in active ? aggregate(trades, active.keyOf as (t: AnalysisTrade) => string | null) : [],
+    () => (active.keyOf ? aggregate(trades, active.keyOf) : []),
     [trades, active],
   );
 
@@ -185,8 +213,12 @@ export function SetupView({ trades }: { trades: AnalysisTrade[] }) {
               {active.label}目前無法分析
             </div>
             <p className="mx-auto max-w-[52ch] text-[0.8rem] leading-relaxed text-text-secondary">
-              {"missing" in active ? active.missing : ""}
+              {active.missing}
             </p>
+          </div>
+        ) : dimRows.length === 0 ? (
+          <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center text-[0.82rem] text-text-secondary">
+            這個欄位已啟用,但還沒有任何交易填寫它。到交易記錄頁的「自訂欄位」分頁標記後就會出現。
           </div>
         ) : (
           <>
@@ -233,7 +265,7 @@ export function SetupView({ trades }: { trades: AnalysisTrade[] }) {
                 ))}
               </tbody>
             </table>
-            {"note" in active && active.note && (
+            {active.note && (
               <p className="mt-2 text-[0.75rem] text-text-tertiary">
                 {active.note}
               </p>

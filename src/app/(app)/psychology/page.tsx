@@ -13,17 +13,40 @@ export const metadata: Metadata = {
 export default async function PsychologyPage() {
   const user = await getCurrentUser();
 
-  const rows = await prisma.trade.findMany({
-    where: { userId: user!.id },
-    select: { closedAt: true, realizedPnl: true, grade: true },
-    orderBy: { closedAt: "asc" },
+  const [rows, fieldDefs] = await Promise.all([
+    prisma.trade.findMany({
+      where: { userId: user!.id },
+      select: {
+        closedAt: true,
+        realizedPnl: true,
+        grade: true,
+        customValues: {
+          select: { value: true, field: { select: { key: true } } },
+        },
+      },
+      orderBy: { closedAt: "asc" },
+    }),
+    prisma.customFieldDefinition.findMany({
+      where: { userId: user!.id },
+      select: { key: true },
+    }),
+  ]);
+
+  const trades: PsychTrade[] = rows.map((t) => {
+    const byKey = Object.fromEntries(
+      t.customValues.map((v) => [v.field.key, v.value]),
+    );
+    return {
+      closedAt: t.closedAt?.toISOString() ?? null,
+      realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
+      grade: t.grade,
+      emotion: typeof byKey.emotion === "string" ? byKey.emotion : null,
+      discipline:
+        typeof byKey.discipline === "boolean" ? byKey.discipline : null,
+    };
   });
 
-  const trades: PsychTrade[] = rows.map((t) => ({
-    closedAt: t.closedAt?.toISOString() ?? null,
-    realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
-    grade: t.grade,
-  }));
+  const keys = new Set(fieldDefs.map((f) => f.key));
 
   return (
     <div className="px-9 py-8">
@@ -34,7 +57,11 @@ export default async function PsychologyPage() {
             情緒、紀律與行為模式
           </p>
         </div>
-        <PsychologyView trades={trades} />
+        <PsychologyView
+          trades={trades}
+          hasEmotionField={keys.has("emotion")}
+          hasDisciplineField={keys.has("discipline")}
+        />
       </div>
     </div>
   );

@@ -13,7 +13,11 @@ export async function PATCH(
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
 
-  let body: { reflectionNote?: unknown; grade?: unknown };
+  let body: {
+    reflectionNote?: unknown;
+    grade?: unknown;
+    customValues?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -42,18 +46,57 @@ export async function PATCH(
     }
   }
 
-  if (Object.keys(data).length === 0) {
+  // 自訂欄位值:{ fieldId: value },value 為 null 表示清空
+  const customValues =
+    body.customValues && typeof body.customValues === "object"
+      ? (body.customValues as Record<string, unknown>)
+      : null;
+
+  if (Object.keys(data).length === 0 && !customValues) {
     return NextResponse.json({ error: "沒有可更新的欄位" }, { status: 400 });
   }
 
-  // 用 updateMany 綁 userId,避免改到別人的交易
-  const result = await prisma.trade.updateMany({
+  // 先確認這筆交易屬於這個使用者,後面的欄位值寫入才安全
+  const owned = await prisma.trade.findFirst({
     where: { id: params.id, userId: user.id },
-    data,
+    select: { id: true },
   });
-
-  if (result.count === 0) {
+  if (!owned) {
     return NextResponse.json({ error: "找不到這筆交易" }, { status: 404 });
+  }
+
+  if (Object.keys(data).length > 0) {
+    await prisma.trade.update({ where: { id: params.id }, data });
+  }
+
+  if (customValues) {
+    // 只接受屬於這個使用者的欄位定義,避免寫入別人的 fieldId
+    const ids = Object.keys(customValues);
+    const defs = await prisma.customFieldDefinition.findMany({
+      where: { id: { in: ids }, userId: user.id },
+      select: { id: true },
+    });
+    const allowed = new Set(defs.map((d) => d.id));
+
+    for (const [fieldId, value] of Object.entries(customValues)) {
+      if (!allowed.has(fieldId)) continue;
+      const isEmpty =
+        value === null ||
+        value === "" ||
+        (Array.isArray(value) && value.length === 0);
+
+      if (isEmpty) {
+        await prisma.customFieldValue.deleteMany({
+          where: { tradeId: params.id, fieldId },
+        });
+      } else {
+        await prisma.customFieldValue.upsert({
+          where: { tradeId_fieldId: { tradeId: params.id, fieldId } },
+          update: { value: value as object },
+          create: { tradeId: params.id, fieldId, value: value as object },
+        });
+      }
+    }
   }
 
   return NextResponse.json({ ok: true });

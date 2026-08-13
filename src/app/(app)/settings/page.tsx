@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { BybitConnection } from "@/components/settings/bybit-connection";
 import { GoalSettings } from "@/components/settings/goal-settings";
+import { FieldBuilder } from "@/components/settings/field-builder";
 
 export const metadata: Metadata = {
   title: "設定 · TradeMind",
@@ -54,11 +55,14 @@ export default async function SettingsPage({
           })}
         </div>
 
-        <div className="max-w-[640px]">
+        {/* 欄位自訂的清單列較寬(排序鈕+名稱+型別+停用),放寬一些 */}
+        <div className={active === "fields" ? "max-w-[760px]" : "max-w-[640px]"}>
           {active === "exchange" ? (
             <BybitConnection />
           ) : active === "goals" ? (
             <GoalSettings />
+          ) : active === "fields" ? (
+            <FieldBuilder />
           ) : (
             <div className="rounded border border-border bg-surface px-5 py-10 text-center">
               <div className="mb-1 text-[0.9rem] font-semibold text-text-secondary">

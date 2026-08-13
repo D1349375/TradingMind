@@ -10,16 +10,25 @@ export const metadata: Metadata = {
 export default async function SetupPage() {
   const user = await getCurrentUser();
 
-  const rows = await prisma.trade.findMany({
-    where: { userId: user!.id },
-    select: {
-      symbol: true,
-      closedAt: true,
-      realizedPnl: true,
-      rMultiple: true,
-      setup: { select: { name: true } },
-    },
-  });
+  const [rows, fieldDefs] = await Promise.all([
+    prisma.trade.findMany({
+      where: { userId: user!.id },
+      select: {
+        symbol: true,
+        closedAt: true,
+        realizedPnl: true,
+        rMultiple: true,
+        setup: { select: { name: true } },
+        customValues: {
+          select: { value: true, field: { select: { key: true } } },
+        },
+      },
+    }),
+    prisma.customFieldDefinition.findMany({
+      where: { userId: user!.id },
+      select: { key: true },
+    }),
+  ]);
 
   const trades: AnalysisTrade[] = rows.map((t) => ({
     symbol: t.symbol,
@@ -27,6 +36,9 @@ export default async function SetupPage() {
     realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
     rMultiple: t.rMultiple === null ? null : Number(t.rMultiple),
     setupName: t.setup?.name ?? null,
+    fieldsByKey: Object.fromEntries(
+      t.customValues.map((v) => [v.field.key, v.value]),
+    ),
   }));
 
   return (
@@ -38,7 +50,10 @@ export default async function SetupPage() {
             哪個策略最賺錢、哪個維度表現最穩定
           </p>
         </div>
-        <SetupView trades={trades} />
+        <SetupView
+          trades={trades}
+          enabledFieldKeys={fieldDefs.map((f) => f.key)}
+        />
       </div>
     </div>
   );

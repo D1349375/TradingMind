@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  CustomFields,
+  type FieldDef,
+  type FieldValues,
+} from "@/components/trades/custom-fields";
 
 // 對應 prototype/index.html 的 .trades-layout(左列表 / 右詳情)。
 
@@ -20,6 +25,7 @@ export type TradeDto = {
   grade: string | null;
   reflectionNote: string | null;
   source: string;
+  customValues: FieldValues;
 };
 
 const GRADES = ["A", "B", "C", "D"];
@@ -80,7 +86,13 @@ function holdingDuration(openedAt: string | null, closedAt: string | null) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-export function TradesView({ trades }: { trades: TradeDto[] }) {
+export function TradesView({
+  trades,
+  fields,
+}: {
+  trades: TradeDto[];
+  fields: FieldDef[];
+}) {
   const [selectedId, setSelectedId] = useState(trades[0]?.id ?? null);
   const [listOpen, setListOpen] = useState(true);
   const selected = trades.find((t) => t.id === selectedId) ?? null;
@@ -148,6 +160,7 @@ export function TradesView({ trades }: { trades: TradeDto[] }) {
           <TradeDetail
             key={selected.id}
             trade={selected}
+            fields={fields}
             listOpen={listOpen}
             onToggleList={() => setListOpen((v) => !v)}
           />
@@ -169,10 +182,12 @@ type DetailTab = (typeof DETAIL_TABS)[number]["key"];
 
 function TradeDetail({
   trade,
+  fields,
   listOpen,
   onToggleList,
 }: {
   trade: TradeDto;
+  fields: FieldDef[];
   listOpen: boolean;
   onToggleList: () => void;
 }) {
@@ -290,7 +305,7 @@ function TradeDetail({
 
       {/* 分頁籤:垂直空間是這一頁的瓶頸,拆成分頁比一路往下捲好讀。
           依據見 design.md 第六之二節。 */}
-      <div className="mb-5 flex gap-5 border-b border-border">
+      <div className="mb-5 flex items-center gap-5 border-b border-border">
         {DETAIL_TABS.map((t) => (
           <button
             key={t.key}
@@ -309,6 +324,15 @@ function TradeDetail({
             )}
           </button>
         ))}
+        <span
+          className="ml-auto pb-2 text-[0.72rem] text-text-secondary"
+          role="status"
+          aria-live="polite"
+        >
+          {saveState === "saving" && "儲存中…"}
+          {saveState === "saved" && "已儲存"}
+          {saveState === "error" && <span className="text-loss">儲存失敗</span>}
+        </span>
       </div>
 
       <section className={tab === "overview" ? "mb-6" : "hidden"}>
@@ -362,9 +386,11 @@ function TradeDetail({
         <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
           自訂欄位
         </h3>
-        <div className="rounded border border-dashed border-border bg-canvas px-3 py-3 text-[0.8rem] text-text-secondary">
-          尚未設定自訂欄位。欄位自訂功能(Field Builder)在「設定 → 欄位自訂」,依建置順序後續補上。
-        </div>
+        <CustomFields
+          fields={fields}
+          initialValues={trade.customValues}
+          onSave={(patch) => save({ customValues: patch })}
+        />
       </section>
 
       <section className={tab === "shots" ? "mb-6" : "hidden"}>
@@ -387,22 +413,9 @@ function TradeDetail({
       </section>
 
       <section className={tab === "note" ? "" : "hidden"}>
-        <div className="mb-2.5 flex items-center justify-between">
-          <h3 className="text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
-            反思筆記
-          </h3>
-          <span
-            className="text-[0.72rem] text-text-secondary"
-            role="status"
-            aria-live="polite"
-          >
-            {saveState === "saving" && "儲存中…"}
-            {saveState === "saved" && "已儲存"}
-            {saveState === "error" && (
-              <span className="text-loss">儲存失敗</span>
-            )}
-          </span>
-        </div>
+        <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
+          反思筆記
+        </h3>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}

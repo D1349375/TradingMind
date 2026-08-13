@@ -12,10 +12,25 @@ export default async function TradesPage() {
 
   // 目前一次載入全部。筆數變多之後要改成分頁或虛擬捲動,
   // 現階段(數十筆)這樣最單純。
-  const rows = await prisma.trade.findMany({
-    where: { userId: user!.id },
-    orderBy: { closedAt: "desc" },
-  });
+  const [rows, fieldDefs] = await Promise.all([
+    prisma.trade.findMany({
+      where: { userId: user!.id },
+      orderBy: { closedAt: "desc" },
+      include: { customValues: { select: { fieldId: true, value: true } } },
+    }),
+    prisma.customFieldDefinition.findMany({
+      where: { userId: user!.id },
+      orderBy: { sortOrder: "asc" },
+    }),
+  ]);
+
+  const fields = fieldDefs.map((f) => ({
+    id: f.id,
+    key: f.key,
+    label: f.label,
+    fieldType: f.fieldType,
+    options: (f.options as string[] | null) ?? null,
+  }));
 
   // Decimal 與 Date 不能直接傳給 client component,轉成字串
   const trades: TradeDto[] = rows.map((t) => ({
@@ -34,6 +49,9 @@ export default async function TradesPage() {
     grade: t.grade,
     reflectionNote: t.reflectionNote,
     source: t.source,
+    customValues: Object.fromEntries(
+      t.customValues.map((v) => [v.fieldId, v.value]),
+    ),
   }));
 
   return (
@@ -47,7 +65,7 @@ export default async function TradesPage() {
             </p>
           </div>
         </div>
-        <TradesView trades={trades} />
+        <TradesView trades={trades} fields={fields} />
       </div>
     </div>
   );
