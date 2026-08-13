@@ -26,6 +26,8 @@ export function GoalSettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fetchingBalance, setFetchingBalance] = useState(false);
+  const [balanceNotice, setBalanceNotice] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/goals")
@@ -51,6 +53,26 @@ export function GoalSettings() {
       return;
     }
     setSaved(true);
+  }
+
+  async function fetchFromBybit() {
+    setFetchingBalance(true);
+    setBalanceNotice(null);
+    setError(null);
+    const res = await fetch("/api/bybit/balance");
+    const d = await res.json();
+    setFetchingBalance(false);
+    if (!res.ok) {
+      setError(d.error ?? "抓取失敗");
+      return;
+    }
+    const prev = goals?.totalCapital;
+    await save({ ...(goals as Goals), totalCapital: d.totalEquity });
+    setBalanceNotice(
+      prev !== null && prev !== undefined && prev !== d.totalEquity
+        ? `已用 Bybit 帳戶淨值更新(原本 ${prev} → ${d.totalEquity.toFixed(1)})`
+        : `已帶入 Bybit 帳戶淨值:${d.totalEquity.toFixed(1)}U`,
+    );
   }
 
   if (!goals) {
@@ -148,23 +170,40 @@ export function GoalSettings() {
 
         <Row
           label="帳戶總資金(U)"
-          hint="資金比例模式的計算基準,固定金額模式不影響量表"
+          hint="資金比例模式的計算基準,固定金額模式不影響量表。可以手動填,或從 Bybit 帳戶淨值帶入(含未實現損益,之後每次都要重新抓,不會自動更新)"
         >
-          <input
-            type="number"
-            min="0"
-            step="1"
-            className={inputClass}
-            value={goals.totalCapital ?? ""}
-            placeholder="未設定"
-            onChange={(e) =>
-              save({
-                ...goals,
-                totalCapital: e.target.value === "" ? null : Number(e.target.value),
-              })
-            }
-          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={fetchFromBybit}
+              disabled={fetchingBalance}
+              className="whitespace-nowrap rounded border border-border px-2.5 py-1.5 text-[0.78rem] text-text-secondary hover:border-accent hover:text-accent disabled:opacity-50"
+            >
+              {fetchingBalance ? "抓取中…" : "從 Bybit 抓取"}
+            </button>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              className={inputClass}
+              value={goals.totalCapital ?? ""}
+              placeholder="未設定"
+              onChange={(e) => {
+                setBalanceNotice(null);
+                save({
+                  ...goals,
+                  totalCapital:
+                    e.target.value === "" ? null : Number(e.target.value),
+                });
+              }}
+            />
+          </div>
         </Row>
+        {balanceNotice && (
+          <p className="pb-2.5 text-right text-[0.75rem] text-text-secondary">
+            {balanceNotice}
+          </p>
+        )}
 
         <Row label="獲利目標(U · 本月)" hint="獲利目標進度條的目標值" last>
           <input

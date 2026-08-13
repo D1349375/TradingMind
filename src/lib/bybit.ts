@@ -193,6 +193,29 @@ export type ClosedPnlItem = {
   updatedTime: string; // ms epoch,平倉時間
 };
 
+export type WalletBalance = {
+  totalEquity: string;
+  totalAvailableBalance: string;
+  totalWalletBalance: string;
+};
+
+// 帳戶總資金——唯讀權限即可查詢,不需要交易權限。
+// 只回傳 UNIFIED 帳戶,Bybit 這個查詢固定只吃這個帳戶類型。
+export async function getWalletBalance(
+  creds: BybitCredentials,
+): Promise<WalletBalance> {
+  const result = await signedGet<{ list: WalletBalance[] }>(
+    creds,
+    "/v5/account/wallet-balance",
+    { accountType: "UNIFIED" },
+  );
+  const account = result.list?.[0];
+  if (!account) {
+    throw new BybitError("這組帳戶沒有 UNIFIED 錢包資料可讀取");
+  }
+  return account;
+}
+
 // 已平倉損益,是交易紀錄的主要資料源(規劃書 §5.1)
 export async function getClosedPnl(
   creds: BybitCredentials,
