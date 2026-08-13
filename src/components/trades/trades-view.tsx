@@ -6,6 +6,7 @@ import {
   type FieldDef,
   type FieldValues,
 } from "@/components/trades/custom-fields";
+import { SetupPicker, type SetupOption } from "@/components/trades/setup-picker";
 
 // 對應 prototype/index.html 的 .trades-layout(左列表 / 右詳情)。
 
@@ -26,7 +27,11 @@ export type TradeDto = {
   reflectionNote: string | null;
   source: string;
   customValues: FieldValues;
+  setupId: string | null;
+  ruleChecks: Record<string, boolean>;
 };
+
+export type DisciplineRuleDef = { id: string; label: string };
 
 const GRADES = ["A", "B", "C", "D"];
 
@@ -89,12 +94,20 @@ function holdingDuration(openedAt: string | null, closedAt: string | null) {
 export function TradesView({
   trades,
   fields,
+  setups: initialSetups,
+  rules,
 }: {
   trades: TradeDto[];
   fields: FieldDef[];
+  setups: SetupOption[];
+  rules: DisciplineRuleDef[];
 }) {
   const [selectedId, setSelectedId] = useState(trades[0]?.id ?? null);
   const [listOpen, setListOpen] = useState(true);
+  const [setups, setSetups] = useState(initialSetups);
+  const [tradeSetup, setTradeSetup] = useState<Record<string, string | null>>(
+    () => Object.fromEntries(trades.map((t) => [t.id, t.setupId])),
+  );
   const selected = trades.find((t) => t.id === selectedId) ?? null;
   const local = useLocalTime();
 
@@ -161,6 +174,13 @@ export function TradesView({
             key={selected.id}
             trade={selected}
             fields={fields}
+            rules={rules}
+            setups={setups}
+            setupId={tradeSetup[selected.id] ?? null}
+            onSetupCreated={(s) => setSetups((prev) => [...prev, s])}
+            onSetupAssign={(setupId) =>
+              setTradeSetup((prev) => ({ ...prev, [selected.id]: setupId }))
+            }
             listOpen={listOpen}
             onToggleList={() => setListOpen((v) => !v)}
           />
@@ -183,11 +203,21 @@ type DetailTab = (typeof DETAIL_TABS)[number]["key"];
 function TradeDetail({
   trade,
   fields,
+  rules,
+  setups,
+  setupId,
+  onSetupCreated,
+  onSetupAssign,
   listOpen,
   onToggleList,
 }: {
   trade: TradeDto;
   fields: FieldDef[];
+  rules: DisciplineRuleDef[];
+  setups: SetupOption[];
+  setupId: string | null;
+  onSetupCreated: (setup: SetupOption) => void;
+  onSetupAssign: (setupId: string | null) => void;
   listOpen: boolean;
   onToggleList: () => void;
 }) {
@@ -195,6 +225,7 @@ function TradeDetail({
   const local = useLocalTime();
   const [note, setNote] = useState(trade.reflectionNote ?? "");
   const [grade, setGrade] = useState(trade.grade ?? "");
+  const [ruleChecks, setRuleChecks] = useState(trade.ruleChecks);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -259,6 +290,15 @@ function TradeDetail({
         <h2 className="text-[1.48rem] font-semibold">
           {trade.symbol} · {trade.direction}
         </h2>
+        <SetupPicker
+          setups={setups}
+          selectedId={setupId}
+          onAssign={(id) => {
+            onSetupAssign(id);
+            save({ setupId: id });
+          }}
+          onCreated={onSetupCreated}
+        />
       </div>
       <div
         className="mb-4 text-[0.87rem] text-text-secondary"
@@ -380,6 +420,62 @@ function TradeDetail({
             </button>
           ))}
         </div>
+      </section>
+
+      <section className={tab === "overview" ? "mb-6" : "hidden"}>
+        <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
+          紀律檢查
+        </h3>
+        {rules.length === 0 ? (
+          <p className="rounded border border-dashed border-border bg-canvas px-3.5 py-3.5 text-[0.8rem] leading-relaxed text-text-secondary">
+            還沒有設定任何紀律規則。到「設定 → 紀律規則」選一套規則包,或新增你自己的規則。
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {rules.map((r) => {
+              const checked = ruleChecks[r.id] === true;
+              return (
+                <div
+                  key={r.id}
+                  role="checkbox"
+                  aria-checked={checked}
+                  tabIndex={0}
+                  onClick={() => {
+                    const next = { ...ruleChecks, [r.id]: !checked };
+                    setRuleChecks(next);
+                    save({ ruleChecks: { [r.id]: !checked } });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      const next = { ...ruleChecks, [r.id]: !checked };
+                      setRuleChecks(next);
+                      save({ ruleChecks: { [r.id]: !checked } });
+                    }
+                  }}
+                  className={`flex cursor-pointer items-center gap-2.5 rounded border px-3 py-2 text-[0.88rem] ${
+                    checked
+                      ? "border-accent bg-accent-soft"
+                      : "border-border bg-canvas hover:border-accent"
+                  }`}
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      checked ? "border-accent bg-accent text-white" : "border-border"
+                    }`}
+                  >
+                    {checked && (
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                        <path d="M4 10l4 4 8-8" />
+                      </svg>
+                    )}
+                  </span>
+                  <span>{r.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section className={tab === "fields" ? "mb-6" : "hidden"}>

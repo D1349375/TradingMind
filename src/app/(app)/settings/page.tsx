@@ -3,16 +3,20 @@ import type { Metadata } from "next";
 import { BybitConnection } from "@/components/settings/bybit-connection";
 import { GoalSettings } from "@/components/settings/goal-settings";
 import { FieldBuilder } from "@/components/settings/field-builder";
+import { DisciplineRules } from "@/components/settings/discipline-rules";
+import { BehaviorDetection } from "@/components/settings/behavior-detection";
 
 export const metadata: Metadata = {
   title: "設定 · TradeMind",
 };
 
-// 分頁對應 prototype/index.html 的設定頁四分頁。
-// 目前只有「交易所連線」是實作的,其餘照建置順序之後補。
+// 分頁對應 prototype/index.html 的設定頁六分頁。
+// 「通知設定」照建置順序之後補。
 const TABS = [
   { key: "exchange", label: "交易所連線" },
   { key: "fields", label: "欄位自訂" },
+  { key: "discipline", label: "紀律規則" },
+  { key: "detection", label: "行為偵測" },
   { key: "notify", label: "通知設定" },
   { key: "goals", label: "目標設定" },
 ] as const;
@@ -56,13 +60,23 @@ export default async function SettingsPage({
         </div>
 
         {/* 欄位自訂的清單列較寬(排序鈕+名稱+型別+停用),放寬一些 */}
-        <div className={active === "fields" ? "max-w-[760px]" : "max-w-[640px]"}>
+        <div
+          className={
+            active === "fields" || active === "discipline"
+              ? "max-w-[760px]"
+              : "max-w-[640px]"
+          }
+        >
           {active === "exchange" ? (
             <BybitConnection />
           ) : active === "goals" ? (
             <GoalSettings />
           ) : active === "fields" ? (
             <FieldBuilder />
+          ) : active === "discipline" ? (
+            <DisciplineRules />
+          ) : active === "detection" ? (
+            <BehaviorDetection />
           ) : (
             <div className="rounded border border-border bg-surface px-5 py-10 text-center">
               <div className="mb-1 text-[0.9rem] font-semibold text-text-secondary">

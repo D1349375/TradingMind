@@ -69,14 +69,12 @@ export function DashboardView({
 
   return (
     <>
-      {/* 目標與風控排在統計格前面:它回答「現在要不要緊」,
-          比回顧型的統計更急迫(見 design.md 第六節) */}
+      <StatGrid summary={summary} />
       <div suppressHydrationWarning>
         {mounted && (
           <GoalCards goals={goals} todayLoss={todayLoss} monthPnl={monthPnl} />
         )}
       </div>
-      <StatGrid summary={summary} />
       <div className="mb-4 grid grid-cols-[1.4fr_1fr] gap-4">
         <EquityChart curve={curve} />
         <WinLossCard summary={summary} />

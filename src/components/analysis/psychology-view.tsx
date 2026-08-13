@@ -1,22 +1,26 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  computeBehaviorAlerts,
+  type BehaviorSetting,
+} from "@/lib/behavior-detection";
+import { DETECTION_DEFS } from "@/lib/behavior-presets";
 
 // 對應 prototype 的心態分析頁。
 //
-// 重要:這一頁大部分指標依賴目前還不存在的資料——
-//   紀律遵守率 → 需要紀律規則設定 + 每筆交易的自陳勾選
-//   情緒 × 損益 → 需要自訂欄位的「情緒狀態」
-//   行為偵測   → 需要偵測設定與偵測結果
-// 沒有資料就誠實說明缺什麼、去哪裡設定,不要顯示 0% 或假資料。
-// 唯一能從現有資料算的是「連續虧損」這類純數字模式,那個是真的。
+// 情緒 × 損益需要自訂欄位的「情緒狀態」;沒有資料就誠實說明缺什麼、去哪裡設定,
+// 不要顯示 0% 或假資料。
 
 export type PsychTrade = {
   closedAt: string | null;
+  openedAt: string | null;
   realizedPnl: number | null;
+  positionSize: number | null;
+  entryPrice: number | null;
   grade: string | null;
   emotion: string | null;
-  discipline: boolean | null;
+  ruleChecks: boolean[]; // 這筆交易上,每條「目前仍存在」的紀律規則被勾成什麼
 };
 
 function fmt(n: number, d = 2) {
@@ -30,11 +34,15 @@ const signed = (n: number, d = 2) => `${n >= 0 ? "+" : ""}${fmt(n, d)}`;
 export function PsychologyView({
   trades,
   hasEmotionField,
-  hasDisciplineField,
+  ruleCount,
+  behaviorSettings,
+  totalCapital,
 }: {
   trades: PsychTrade[];
   hasEmotionField: boolean;
-  hasDisciplineField: boolean;
+  ruleCount: number;
+  behaviorSettings: BehaviorSetting[];
+  totalCapital: number | null;
 }) {
   const stats = useMemo(() => {
     const settled = trades
@@ -106,10 +114,11 @@ export function PsychologyView({
       byEmotion.set(t.emotion, prev);
     }
 
-    // 紀律遵守
-    const marked = trades.filter((t) => t.discipline !== null);
-    const followed = marked.filter((t) => t.discipline === true);
-    const violated = marked.filter((t) => t.discipline === false);
+    // 紀律遵守:依這筆交易的紀律檢查清單完成度算,不是單一是非題——
+    // 只要有勾過至少一條規則就算「已標記」,全部勾選才算「有遵守」。
+    const marked = trades.filter((t) => t.ruleChecks.length > 0);
+    const followed = marked.filter((t) => t.ruleChecks.every((c) => c));
+    const violated = marked.filter((t) => t.ruleChecks.some((c) => !c));
     const violationLoss = violated.reduce(
       (s, t) => s + Math.min(0, t.realizedPnl ?? 0),
       0,
@@ -166,15 +175,15 @@ export function PsychologyView({
 
       <div className="mb-4 grid grid-cols-2 gap-4">
         <Card title="紀律遵守率">
-          {!hasDisciplineField ? (
+          {ruleCount === 0 ? (
             <NeedsSetup
-              what="紀律遵守欄位"
-              why="要先在欄位庫啟用「紀律遵守」,並在每筆交易標記是否符合交易計劃。"
-              where="設定 → 欄位自訂"
+              what="紀律規則"
+              why="要先設定至少一條紀律規則,並在每筆交易的「紀律檢查」清單勾選是否符合。"
+              where="設定 → 紀律規則"
             />
           ) : stats.disciplineMarked === 0 ? (
             <p className="text-[0.82rem] leading-relaxed text-text-secondary">
-              「紀律遵守」欄位已啟用,但還沒有交易標記。到交易記錄頁的「自訂欄位」分頁標記後就會統計。
+              紀律規則已設定,但還沒有交易勾選過。到交易記錄頁的「紀律檢查」清單標記後就會統計。
             </p>
           ) : (
             <div>
@@ -261,16 +270,11 @@ export function PsychologyView({
         </Card>
       </div>
 
-      <div className="mb-4 rounded border border-border bg-surface px-4 py-4">
-        <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
-          行為偵測
-        </h3>
-        <NeedsSetup
-          what="行為偵測設定"
-          why="復仇交易、上頭偵測這類判定需要先設定要偵測哪些模式與門檻;其中「浮虧加倉」等可驗證的行為之後會由系統直接從成交資料算出,不需你自己勾選。"
-          where="設定 → 行為偵測(尚未實作)"
-        />
-      </div>
+      <BehaviorDetectionCard
+        trades={trades}
+        behaviorSettings={behaviorSettings}
+        totalCapital={totalCapital}
+      />
 
       <div className="rounded border border-border bg-surface px-4 py-4">
         <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
@@ -364,6 +368,85 @@ function Card({
         {title}
       </h3>
       {children}
+    </div>
+  );
+}
+
+// 「上頭偵測」按本地日曆日分組,伺服器與瀏覽器時區不同會誤判——
+// 跟 Dashboard 的日曆卡同一個理由,整張卡延後到掛載後才計算與顯示。
+function BehaviorDetectionCard({
+  trades,
+  behaviorSettings,
+  totalCapital,
+}: {
+  trades: PsychTrade[];
+  behaviorSettings: BehaviorSetting[];
+  totalCapital: number | null;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const results = useMemo(
+    () =>
+      mounted
+        ? computeBehaviorAlerts(trades, behaviorSettings, totalCapital)
+        : [],
+    [mounted, trades, behaviorSettings, totalCapital],
+  );
+
+  return (
+    <div className="mb-4 rounded border border-border bg-surface px-4 py-4">
+      <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
+        行為偵測
+      </h3>
+      {!mounted ? (
+        <p className="text-[0.82rem] text-text-secondary">計算中…</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {DETECTION_DEFS.map((def) => {
+            const r = results.find((x) => x.kind === def.kind);
+            if (!r) return null;
+            return (
+              <div
+                key={def.kind}
+                className={`rounded border px-3 py-2.5 ${
+                  r.enabled ? "border-border bg-canvas" : "border-dashed border-border bg-canvas opacity-60"
+                }`}
+              >
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="text-[0.84rem] font-semibold">{def.label}</span>
+                  {!r.enabled && (
+                    <span className="text-[0.68rem] text-text-tertiary">未啟用</span>
+                  )}
+                </div>
+                {!r.available ? (
+                  <p className="text-[0.76rem] leading-relaxed text-text-tertiary">
+                    {r.unavailableReason}
+                  </p>
+                ) : (
+                  <>
+                    <div
+                      className={`num text-[1.1rem] font-semibold ${
+                        r.count > 0 ? "text-loss" : "text-text"
+                      }`}
+                    >
+                      {r.count} 次
+                    </div>
+                    {r.sample.length > 0 && (
+                      <div className="mt-0.5 text-[0.72rem] text-text-tertiary">
+                        {r.sample.join(" · ")}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="mt-3 text-[0.72rem] text-text-tertiary">
+        閾值可到「設定 → 行為偵測」調整;是你自己定義什麼叫「上頭」,系統不代為判斷。
+      </p>
     </div>
   );
 }

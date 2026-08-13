@@ -17,6 +17,8 @@ export async function PATCH(
     reflectionNote?: unknown;
     grade?: unknown;
     customValues?: unknown;
+    setupId?: unknown;
+    ruleChecks?: unknown;
   };
   try {
     body = await request.json();
@@ -24,7 +26,11 @@ export async function PATCH(
     return NextResponse.json({ error: "請求格式錯誤" }, { status: 400 });
   }
 
-  const data: { reflectionNote?: string | null; grade?: string | null } = {};
+  const data: {
+    reflectionNote?: string | null;
+    grade?: string | null;
+    setupId?: string | null;
+  } = {};
 
   if ("reflectionNote" in body) {
     if (typeof body.reflectionNote !== "string" && body.reflectionNote !== null) {
@@ -46,13 +52,36 @@ export async function PATCH(
     }
   }
 
+  if ("setupId" in body) {
+    if (body.setupId === null) {
+      data.setupId = null;
+    } else if (typeof body.setupId === "string") {
+      const owned = await prisma.setup.findFirst({
+        where: { id: body.setupId, userId: user.id },
+        select: { id: true },
+      });
+      if (!owned) {
+        return NextResponse.json({ error: "找不到這個 Setup" }, { status: 400 });
+      }
+      data.setupId = body.setupId;
+    } else {
+      return NextResponse.json({ error: "setupId 格式錯誤" }, { status: 400 });
+    }
+  }
+
   // 自訂欄位值:{ fieldId: value },value 為 null 表示清空
   const customValues =
     body.customValues && typeof body.customValues === "object"
       ? (body.customValues as Record<string, unknown>)
       : null;
 
-  if (Object.keys(data).length === 0 && !customValues) {
+  // 紀律檢查:{ ruleId: boolean },只接受目前使用者自己的規則
+  const ruleChecks =
+    body.ruleChecks && typeof body.ruleChecks === "object"
+      ? (body.ruleChecks as Record<string, unknown>)
+      : null;
+
+  if (Object.keys(data).length === 0 && !customValues && !ruleChecks) {
     return NextResponse.json({ error: "沒有可更新的欄位" }, { status: 400 });
   }
 
@@ -96,6 +125,24 @@ export async function PATCH(
           create: { tradeId: params.id, fieldId, value: value as object },
         });
       }
+    }
+  }
+
+  if (ruleChecks) {
+    const ids = Object.keys(ruleChecks);
+    const rules = await prisma.disciplineRule.findMany({
+      where: { id: { in: ids }, userId: user.id },
+      select: { id: true },
+    });
+    const allowed = new Set(rules.map((r) => r.id));
+
+    for (const [ruleId, value] of Object.entries(ruleChecks)) {
+      if (!allowed.has(ruleId) || typeof value !== "boolean") continue;
+      await prisma.tradeRuleCheck.upsert({
+        where: { tradeId_ruleId: { tradeId: params.id, ruleId } },
+        update: { checked: value },
+        create: { tradeId: params.id, ruleId, checked: value },
+      });
     }
   }
 

@@ -12,15 +12,26 @@ export default async function TradesPage() {
 
   // 目前一次載入全部。筆數變多之後要改成分頁或虛擬捲動,
   // 現階段(數十筆)這樣最單純。
-  const [rows, fieldDefs] = await Promise.all([
+  const [rows, fieldDefs, setups, rules] = await Promise.all([
     prisma.trade.findMany({
       where: { userId: user!.id },
       orderBy: { closedAt: "desc" },
-      include: { customValues: { select: { fieldId: true, value: true } } },
+      include: {
+        customValues: { select: { fieldId: true, value: true } },
+        ruleChecks: { select: { ruleId: true, checked: true } },
+      },
     }),
     prisma.customFieldDefinition.findMany({
       where: { userId: user!.id },
       orderBy: { sortOrder: "asc" },
+    }),
+    prisma.setup.findMany({
+      where: { userId: user!.id },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.disciplineRule.findMany({
+      where: { userId: user!.id, active: true },
+      orderBy: { createdAt: "asc" },
     }),
   ]);
 
@@ -52,6 +63,10 @@ export default async function TradesPage() {
     customValues: Object.fromEntries(
       t.customValues.map((v) => [v.fieldId, v.value]),
     ),
+    setupId: t.setupId,
+    ruleChecks: Object.fromEntries(
+      t.ruleChecks.map((c) => [c.ruleId, c.checked]),
+    ),
   }));
 
   return (
@@ -65,7 +80,17 @@ export default async function TradesPage() {
             </p>
           </div>
         </div>
-        <TradesView trades={trades} fields={fields} />
+        <TradesView
+          trades={trades}
+          fields={fields}
+          setups={setups.map((s) => ({
+            id: s.id,
+            name: s.name,
+            entryLogic: s.entryLogic,
+            economicRationale: s.economicRationale,
+          }))}
+          rules={rules.map((r) => ({ id: r.id, label: r.label }))}
+        />
       </div>
     </div>
   );
