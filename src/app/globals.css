@@ -18,8 +18,11 @@
   --loss: #b83c30;
   --profit-bg: rgba(15, 122, 86, 0.09);
   --loss-bg: rgba(184, 60, 48, 0.09);
-  --profit-bg-strong: rgba(15, 122, 86, 0.12);
-  --loss-bg-strong: rgba(184, 60, 48, 0.12);
+  /* 實色而非半透明:日曆格子用 gap-px+bg-border 畫格線,半透明色疊在格線灰底上
+     會比疊在 canvas 上淡很多、吃掉對比度。這兩個值是「疊在 canvas 上」的
+     實際呈色結果算出來的實色,視覺等同原本的 alpha 疊色，但不受背後元素影響。 */
+  --profit-bg-strong: #dbe7e0;
+  --loss-bg-strong: #efe0dc;
   --warning: #96640d;
   --warning-bg: rgba(150, 100, 13, 0.1);
   --radius: 6px;
@@ -40,8 +43,9 @@ html[data-theme="dark"] {
   --loss: #e8776c;
   --profit-bg: rgba(75, 193, 144, 0.14);
   --loss-bg: rgba(232, 119, 108, 0.14);
-  --profit-bg-strong: rgba(75, 193, 144, 0.18);
-  --loss-bg-strong: rgba(232, 119, 108, 0.18);
+  /* 見 :root 區塊註解:實色版本,不受格線灰底疊色影響 */
+  --profit-bg-strong: #223831;
+  --loss-bg-strong: #3e2b2a;
   --warning: #d9a441;
   --warning-bg: rgba(217, 164, 65, 0.16);
 }
@@ -60,8 +64,9 @@ html[data-theme="dark"] {
     --loss: #e8776c;
     --profit-bg: rgba(75, 193, 144, 0.14);
     --loss-bg: rgba(232, 119, 108, 0.14);
-    --profit-bg-strong: rgba(75, 193, 144, 0.18);
-    --loss-bg-strong: rgba(232, 119, 108, 0.18);
+    /* 見 :root 區塊註解:實色版本,不受格線灰底疊色影響 */
+    --profit-bg-strong: #223831;
+    --loss-bg-strong: #3e2b2a;
     --warning: #d9a441;
     --warning-bg: rgba(217, 164, 65, 0.16);
   }
