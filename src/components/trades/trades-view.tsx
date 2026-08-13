@@ -82,6 +82,7 @@ function holdingDuration(openedAt: string | null, closedAt: string | null) {
 
 export function TradesView({ trades }: { trades: TradeDto[] }) {
   const [selectedId, setSelectedId] = useState(trades[0]?.id ?? null);
+  const [listOpen, setListOpen] = useState(true);
   const selected = trades.find((t) => t.id === selectedId) ?? null;
   const local = useLocalTime();
 
@@ -99,8 +100,14 @@ export function TradesView({ trades }: { trades: TradeDto[] }) {
   }
 
   return (
-    <div className="grid h-[calc(100vh-168px)] grid-cols-[300px_1fr] overflow-hidden rounded border border-border">
-      <div className="overflow-y-auto border-r border-border bg-canvas">
+    <div
+      className={`grid h-[calc(100vh-168px)] overflow-hidden rounded border border-border ${
+        listOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[0_1fr]"
+      }`}
+    >
+      <div
+        className={`overflow-y-auto bg-canvas ${listOpen ? "border-r border-border" : "invisible"}`}
+      >
         {trades.map((t) => {
           const pnl = Number(t.realizedPnl ?? 0);
           const win = pnl >= 0;
@@ -137,13 +144,39 @@ export function TradesView({ trades }: { trades: TradeDto[] }) {
       </div>
 
       <div className="overflow-y-auto bg-surface px-11 py-8">
-        {selected && <TradeDetail key={selected.id} trade={selected} />}
+        {selected && (
+          <TradeDetail
+            key={selected.id}
+            trade={selected}
+            listOpen={listOpen}
+            onToggleList={() => setListOpen((v) => !v)}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function TradeDetail({ trade }: { trade: TradeDto }) {
+const DETAIL_TABS = [
+  { key: "overview", label: "總覽" },
+  // 自訂欄位獨立一個分頁:Field Builder 完成後這裡會有情緒/時段/Setup/
+  // 週期/紀律/標籤等十幾個欄位,塞在總覽會把它擠爆
+  { key: "fields", label: "自訂欄位" },
+  { key: "note", label: "反思筆記" },
+  { key: "shots", label: "截圖" },
+] as const;
+type DetailTab = (typeof DETAIL_TABS)[number]["key"];
+
+function TradeDetail({
+  trade,
+  listOpen,
+  onToggleList,
+}: {
+  trade: TradeDto;
+  listOpen: boolean;
+  onToggleList: () => void;
+}) {
+  const [tab, setTab] = useState<DetailTab>("overview");
   const local = useLocalTime();
   const [note, setNote] = useState(trade.reflectionNote ?? "");
   const [grade, setGrade] = useState(trade.grade ?? "");
@@ -183,12 +216,37 @@ function TradeDetail({ trade }: { trade: TradeDto }) {
   const duration = holdingDuration(trade.openedAt, trade.closedAt);
 
   return (
-    <div className="max-w-[640px]">
-      <h2 className="mb-1 text-[1.48rem] font-semibold">
-        {trade.symbol} · {trade.direction}
-      </h2>
+    // 收起列表時放寬到 860px,展開時維持 640px 的舒適閱讀寬度
+    <div className={listOpen ? "max-w-[640px]" : "max-w-[860px]"}>
+      <div className="mb-1 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggleList}
+          title={listOpen ? "收起交易列表" : "展開交易列表"}
+          aria-label={listOpen ? "收起交易列表" : "展開交易列表"}
+          aria-expanded={listOpen}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border text-text-secondary hover:border-accent hover:text-accent"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+          >
+            <rect x="3" y="4" width="14" height="12" rx="1.5" />
+            <line x1="8" y1="4" x2="8" y2="16" />
+            {!listOpen && <path d="M11 8l2 2-2 2" />}
+          </svg>
+        </button>
+        <h2 className="text-[1.48rem] font-semibold">
+          {trade.symbol} · {trade.direction}
+        </h2>
+      </div>
       <div
-        className="mb-5 text-[0.87rem] text-text-secondary"
+        className="mb-4 text-[0.87rem] text-text-secondary"
         suppressHydrationWarning
       >
         {fmtDateTime(trade.closedAt, local)} 平倉
@@ -230,7 +288,30 @@ function TradeDetail({ trade }: { trade: TradeDto }) {
         </div>
       </div>
 
-      <section className="mb-6">
+      {/* 分頁籤:垂直空間是這一頁的瓶頸,拆成分頁比一路往下捲好讀。
+          依據見 design.md 第六之二節。 */}
+      <div className="mb-5 flex gap-5 border-b border-border">
+        {DETAIL_TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            aria-current={tab === t.key}
+            className={
+              tab === t.key
+                ? "-mb-px border-b-2 border-accent pb-2 text-[0.85rem] font-semibold text-text"
+                : "-mb-px border-b-2 border-transparent pb-2 text-[0.85rem] text-text-secondary hover:text-text"
+            }
+          >
+            {t.label}
+            {t.key === "note" && note.trim() !== "" && (
+              <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-accent align-middle" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      <section className={tab === "overview" ? "mb-6" : "hidden"}>
         <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
           自動同步欄位 · Bybit API
         </h3>
@@ -250,7 +331,7 @@ function TradeDetail({ trade }: { trade: TradeDto }) {
         </dl>
       </section>
 
-      <section className="mb-6">
+      <section className={tab === "overview" ? "mb-6" : "hidden"}>
         <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
           交易評分
         </h3>
@@ -277,7 +358,7 @@ function TradeDetail({ trade }: { trade: TradeDto }) {
         </div>
       </section>
 
-      <section className="mb-6">
+      <section className={tab === "fields" ? "mb-6" : "hidden"}>
         <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
           自訂欄位
         </h3>
@@ -286,7 +367,7 @@ function TradeDetail({ trade }: { trade: TradeDto }) {
         </div>
       </section>
 
-      <section className="mb-6">
+      <section className={tab === "shots" ? "mb-6" : "hidden"}>
         <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
           截圖
         </h3>
@@ -305,7 +386,7 @@ function TradeDetail({ trade }: { trade: TradeDto }) {
         </p>
       </section>
 
-      <section>
+      <section className={tab === "note" ? "" : "hidden"}>
         <div className="mb-2.5 flex items-center justify-between">
           <h3 className="text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
             反思筆記
@@ -326,8 +407,8 @@ function TradeDetail({ trade }: { trade: TradeDto }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="這筆交易的進場理由、執行狀況、事後檢討…"
-          rows={6}
-          className="w-full resize-y rounded border border-border bg-canvas px-3 py-2.5 text-[1.03rem] leading-[1.75] text-text outline-none placeholder:text-text-tertiary focus:border-accent"
+          rows={7}
+          className="w-full resize-y rounded border border-border bg-canvas px-3.5 py-3 text-[1.03rem] leading-[1.75] text-text outline-none placeholder:text-text-tertiary focus:border-accent"
         />
       </section>
     </div>
