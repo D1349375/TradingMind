@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TradesView, type TradeDto } from "@/components/trades/trades-view";
+import { AddTradeForm } from "@/components/trades/add-trade-form";
 
 export const metadata: Metadata = {
   title: "交易記錄 · TradeMind",
@@ -79,6 +80,7 @@ export default async function TradesPage() {
               自動同步 + 手動補充欄位 · 共 {trades.length} 筆
             </p>
           </div>
+          <AddTradeForm />
         </div>
         <TradesView
           trades={trades}

@@ -9,6 +9,8 @@ const PROTECTED_PREFIXES = [
   "/setup",
   "/psychology",
   "/settings",
+  "/journal",
+  "/playbook",
 ];
 // 已登入就不該再看到的路徑
 const AUTH_ROUTES = ["/login", "/signup"];

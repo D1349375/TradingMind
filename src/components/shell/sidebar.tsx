@@ -94,14 +94,14 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
       },
       {
         label: "每日日記",
-        badge: "Phase 2",
+        href: "/journal",
         icon: icon(
           <path d="M4 4h8l4 4v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />,
         ),
       },
       {
         label: "Playbook",
-        badge: "Phase 2",
+        href: "/playbook",
         icon: icon(
           <>
             <path d="M4 5a2 2 0 0 1 2-2h8v14H6a2 2 0 0 0-2 2z" />
