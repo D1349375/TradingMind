@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sampleTier, SAMPLE_TIER_LABEL } from "@/lib/stats";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { cusumSetupDecay } from "@/lib/cusum";
+import {
+  probabilisticSharpeRatio,
+  deflatedSharpeRatio,
+  signPermutationTest,
+} from "@/lib/quant-validation";
 
 export type SetupWithTrades = {
   id: string;
@@ -33,6 +38,62 @@ function stats(trades: SetupWithTrades["trades"]) {
   };
 }
 
+export type ValidationResult = {
+  psr: number;
+  dsr: number | null; // null 代表符合門檻的 Setup 只有一個,還沒有真正在做多重比較校正
+  mcptPValue: number;
+  nTrials: number;
+  sampleSize: number;
+};
+
+// PSR/DSR/MCPT 要在「所有已登記 Setup」的層級一次算完(DSR 需要知道總共比較
+// 了幾個 Setup、彼此 Sharpe 的離散程度),不能每張卡片各自獨立算。
+// 門檻:要有帳戶總資金(換算報酬率)+ 單一 Setup 至少 20 筆交易。
+function computeSetupValidation(
+  registered: { setup: SetupWithTrades }[],
+  totalCapital: number | null,
+): Map<string, ValidationResult> {
+  const result = new Map<string, ValidationResult>();
+  if (!totalCapital || totalCapital <= 0) return result;
+
+  const eligible: { id: string; returns: number[]; sharpe: number }[] = [];
+  for (const { setup } of registered) {
+    const returns = setup.trades
+      .map((t) => t.realizedPnl)
+      .filter((p): p is number => p !== null)
+      .map((p) => p / totalCapital);
+    if (returns.length < 20) continue;
+    const psrResult = probabilisticSharpeRatio(returns);
+    if (!psrResult) continue;
+    eligible.push({ id: setup.id, returns, sharpe: psrResult.sharpe });
+  }
+  if (eligible.length === 0) return result;
+
+  const nTrials = eligible.length;
+  const sharpeMean = eligible.reduce((s, e) => s + e.sharpe, 0) / nTrials;
+  const sharpeStd =
+    nTrials > 1
+      ? Math.sqrt(
+          eligible.reduce((s, e) => s + (e.sharpe - sharpeMean) ** 2, 0) / (nTrials - 1),
+        )
+      : 0;
+
+  for (const e of eligible) {
+    const psrResult = probabilisticSharpeRatio(e.returns);
+    const dsrResult = nTrials >= 2 ? deflatedSharpeRatio(e.returns, nTrials, sharpeStd) : null;
+    const mcpt = signPermutationTest(e.returns);
+    if (!psrResult || !mcpt) continue;
+    result.set(e.id, {
+      psr: psrResult.psr,
+      dsr: dsrResult ? dsrResult.dsr : null,
+      mcptPValue: mcpt.pValue,
+      nTrials,
+      sampleSize: e.returns.length,
+    });
+  }
+  return result;
+}
+
 // 已登記的 Setup(填過經濟機制)才進 Playbook 排行比較——沒登記的只是
 // 假設清單,拿來跟已驗證的排在一起比較沒有意義。見 schema 的 Setup 註解。
 export function PlaybookView({
@@ -47,6 +108,10 @@ export function PlaybookView({
     .map((s) => ({ setup: s, stats: stats(s.trades) }))
     .sort((a, b) => b.stats.pnl - a.stats.pnl);
   const unregistered = setups.filter((s) => !s.registered);
+  const validation = useMemo(
+    () => computeSetupValidation(registered, totalCapital),
+    [registered, totalCapital],
+  );
 
   if (setups.length === 0) {
     return (
@@ -84,6 +149,7 @@ export function PlaybookView({
                 setup={setup}
                 stats={s}
                 totalCapital={totalCapital}
+                validation={validation.get(setup.id) ?? null}
               />
             ))}
           </div>
@@ -102,6 +168,7 @@ export function PlaybookView({
                 setup={setup}
                 stats={stats(setup.trades)}
                 totalCapital={totalCapital}
+                validation={null}
               />
             ))}
           </div>
@@ -115,10 +182,12 @@ function SetupCard({
   setup,
   stats: s,
   totalCapital,
+  validation,
 }: {
   setup: SetupWithTrades;
   stats: ReturnType<typeof stats>;
   totalCapital: number | null;
+  validation: ValidationResult | null;
 }) {
   const [editing, setEditing] = useState(false);
   const router = useRouter();
@@ -217,6 +286,48 @@ function SetupCard({
             <span className="text-[0.76rem] text-text-secondary">
               正常(基準 {decay.baselineSize} 筆 vs 監測 {decay.monitoredSize} 筆,未觸發警報)
             </span>
+          )}
+        </div>
+      )}
+
+      {setup.registered && (
+        <div className="mt-2.5 flex items-start gap-1.5 border-t border-border pt-2.5">
+          <span className="pt-0.5 text-[0.72rem] font-semibold text-text-secondary">
+            統計驗證
+          </span>
+          <HelpTooltip>
+            PSR(機率式 Sharpe):這個 Setup 的 Sharpe 真的大於 0 的機率,只看它自己。DSR(去膨脹 Sharpe):把「你同時比較了幾個 Setup」這件事校正進去——比較的 Setup 越多,同一個 Sharpe 換算出的 DSR 會越低,因為挑最好的那個光靠運氣就會看起來不錯。符號排列檢定:把每筆交易的正負號隨機打散幾千次,算實際平均報酬贏過幾成的隨機結果(p 值越低越不像丟硬幣)。三個都需要帳戶總資金(換算報酬率)+ 至少 20 筆交易。**這裡沒有做 PBO/CSCV(過擬合機率的正式檢定)**,目前的 DSR 只是單一 Sharpe 的多重比較粗略校正,不是完整版本。
+          </HelpTooltip>
+          {!totalCapital ? (
+            <span className="text-[0.76rem] text-text-tertiary">
+              需要先在「設定 → 目標設定」填寫帳戶總資金。
+            </span>
+          ) : s.n < 20 ? (
+            <span className="text-[0.76rem] text-text-tertiary">
+              交易數不足 20 筆,樣本太少無法計算。
+            </span>
+          ) : !validation ? (
+            <span className="text-[0.76rem] text-text-tertiary">目前無法計算。</span>
+          ) : (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[0.76rem]">
+              <span>
+                <span className="text-text-secondary">PSR </span>
+                <span className="num font-semibold">{fmt(validation.psr * 100, 0)}%</span>
+              </span>
+              <span>
+                <span className="text-text-secondary">DSR </span>
+                <span className="num font-semibold">
+                  {validation.dsr === null ? "—" : `${fmt(validation.dsr * 100, 0)}%`}
+                </span>
+                {validation.dsr === null && (
+                  <span className="text-text-tertiary">(只有這一個 Setup 符合門檻,還沒真正在做多重比較)</span>
+                )}
+              </span>
+              <span>
+                <span className="text-text-secondary">符號排列 p 值 </span>
+                <span className="num font-semibold">{fmt(validation.mcptPValue, 3)}</span>
+              </span>
+            </div>
           )}
         </div>
       )}
