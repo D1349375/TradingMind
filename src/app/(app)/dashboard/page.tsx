@@ -14,7 +14,14 @@ export default async function DashboardPage() {
   const [rows, conn, goal] = await Promise.all([
     prisma.trade.findMany({
       where: { userId: user!.id },
-      select: { symbol: true, closedAt: true, realizedPnl: true, rMultiple: true },
+      select: {
+        symbol: true,
+        closedAt: true,
+        realizedPnl: true,
+        rMultiple: true,
+        positionSize: true,
+        leverage: true,
+      },
       orderBy: { closedAt: "asc" },
     }),
     prisma.bybitConnection.findUnique({
@@ -42,6 +49,8 @@ export default async function DashboardPage() {
     closedAt: t.closedAt?.toISOString() ?? null,
     realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
     rMultiple: t.rMultiple === null ? null : Number(t.rMultiple),
+    positionSize: Number(t.positionSize),
+    leverage: t.leverage === null ? null : Number(t.leverage),
   }));
 
   // 在伺服器端(固定 UTC 時區)格式化成字串再傳給 client component,

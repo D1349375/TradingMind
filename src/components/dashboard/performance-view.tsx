@@ -7,9 +7,16 @@ import {
   rHistogram,
   topTrades,
   simulateRuinRisk,
+  riskAdjustedMetrics,
+  winLossComparison,
+  hourOfDayBreakdown,
+  performanceByPositionSize,
+  performanceByLeverage,
   type NamedTradePoint,
   type HistogramBucket,
+  type PerfBucket,
 } from "@/lib/stats";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 function fmt(n: number, d = 2) {
   return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -40,38 +47,40 @@ export function PerformanceView({
     () => (mounted ? simulateRuinRisk(trades, totalCapital) : null),
     [mounted, trades, totalCapital],
   );
+  const risk = useMemo(
+    () => (mounted ? riskAdjustedMetrics(trades, totalCapital) : null),
+    [mounted, trades, totalCapital],
+  );
+  const wl = useMemo(() => winLossComparison(trades), [trades]);
+  const hourly = useMemo(() => (mounted ? hourOfDayBreakdown(trades) : []), [mounted, trades]);
+  const sizeBuckets = useMemo(() => performanceByPositionSize(trades), [trades]);
+  const leverageBuckets = useMemo(() => performanceByLeverage(trades), [trades]);
 
   return (
     <div className="space-y-4">
-      <div className="rounded border border-border bg-surface px-4 py-4">
-        <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
-          每日損益
-        </h3>
+      <Card
+        title="每日損益"
+        help="依平倉日(你的本地時區)加總每天的已實現損益。滑鼠移到長條上看該日詳細數字。"
+      >
         {!mounted ? (
           <p className="text-[0.82rem] text-text-secondary">計算中…</p>
         ) : (
           <DailyBarChart data={daily} />
         )}
-      </div>
+      </Card>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="rounded border border-border bg-surface px-4 py-4">
-          <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
-            損益分布
-          </h3>
-          <HistogramChart buckets={pnlBuckets} />
-        </div>
-        <div className="rounded border border-border bg-surface px-4 py-4">
-          <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
-            R 分布
-          </h3>
+        <Card title="損益分布" help="把每筆已平倉交易的損益切成 10 個等寬區間,看損益集中在哪個範圍。滑鼠移到長條上看該區間筆數。">
+          <HistogramChart buckets={pnlBuckets} unit="U" />
+        </Card>
+        <Card title="R 分布" help="把每筆有填 R 值的交易切成 10 個等寬區間。R 值需要止損價才能算,同步交易大多沒有,要在交易詳情頁手動填。">
           {rSampleSize === 0 ? (
             <p className="text-[0.8rem] leading-relaxed text-text-secondary">
               目前沒有交易填過 R 值——同步交易缺止損價算不出 R,要在交易詳情頁手動填寫。
             </p>
           ) : (
             <>
-              <HistogramChart buckets={rBuckets} />
+              <HistogramChart buckets={rBuckets} unit="R" />
               {rSampleSize < 10 && (
                 <p className="mt-2 text-[0.72rem] text-text-tertiary">
                   只有 {rSampleSize} 筆交易有 R 值,樣本少,分布形狀還不穩定。
@@ -79,15 +88,55 @@ export function PerformanceView({
               )}
             </>
           )}
-        </div>
+        </Card>
       </div>
 
-      <div className="rounded border border-border bg-surface px-4 py-4">
-        <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
-          破產風險模擬
-        </h3>
+      <Card
+        title="風險調整報酬指標"
+        help="用每天的損益序列算 Sharpe/Sortino/Calmar。有設定帳戶總資金時會換算成報酬率(可讀成年化百分比);沒設定則直接用金額本身算比率,Sharpe/Sortino 數值仍然有效,但無法讀成百分比。加密貨幣全年無休交易,年化用 365 天而非股市慣用的 252 天。樣本少於 20 個交易日時不顯示,避免比率不穩定誤導判斷。"
+      >
+        <RiskMetricsCard result={risk} mounted={mounted} />
+      </Card>
+
+      <Card
+        title="破產風險模擬"
+        help="用你過去已平倉交易的損益(換算成占帳戶總資金的報酬率)自助抽樣(bootstrap)重放 2000 次,估計未來 100 筆交易內帳戶跌破起始資金一定比例的機率。假設未來交易分布跟過去相似,樣本越小這個假設越不可靠。"
+      >
         <RuinRiskCard result={ruin} mounted={mounted} />
+      </Card>
+
+      <Card
+        title="Wins vs Losses 對照"
+        help="把贏的交易和輸的交易分開,比較平均部位大小/槓桿/R 值——用來找「是不是部位一放大就開始輸」這類系統性差異,不是單純的勝率統計。"
+      >
+        <WinLossComparisonCard result={wl} />
+      </Card>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Card
+          title="依部位大小分組"
+          help="把交易依部位大小切成 4 個等寬區間,分別看各區間的勝率/平均R/損益。"
+        >
+          <BucketTable buckets={sizeBuckets} label="部位大小" />
+        </Card>
+        <Card
+          title="依槓桿分組"
+          help="把交易依槓桿倍數切成 4 個等寬區間,分別看各區間的勝率/平均R/損益。"
+        >
+          <BucketTable buckets={leverageBuckets} label="槓桿" />
+        </Card>
       </div>
+
+      <Card
+        title="依平倉小時分布"
+        help="依平倉時間的本地小時分組(0-23點),不需要你手動填任何欄位,系統直接用平倉時間算——用來找「哪個時段表現特別好或特別差」。"
+      >
+        {!mounted ? (
+          <p className="text-[0.82rem] text-text-secondary">計算中…</p>
+        ) : (
+          <HourlyTable buckets={hourly} />
+        )}
+      </Card>
 
       <div className="grid grid-cols-2 gap-4">
         <TopTradesTable title="最佳 10 筆" rows={best} tone="profit" />
@@ -97,7 +146,200 @@ export function PerformanceView({
   );
 }
 
+function Card({
+  title,
+  help,
+  children,
+}: {
+  title: string;
+  help: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded border border-border bg-surface px-4 py-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-[0.82rem] font-semibold text-text-secondary">{title}</h3>
+        <HelpTooltip>{help}</HelpTooltip>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function RiskMetricsCard({
+  result,
+  mounted,
+}: {
+  result: ReturnType<typeof riskAdjustedMetrics> | null;
+  mounted: boolean;
+}) {
+  if (!mounted || !result) {
+    return <p className="text-[0.82rem] text-text-secondary">計算中…</p>;
+  }
+  if (!result.available) {
+    return (
+      <div className="rounded border border-dashed border-border bg-canvas px-3.5 py-3.5">
+        <p className="text-[0.8rem] leading-relaxed text-text-secondary">
+          {result.unavailableReason}
+        </p>
+      </div>
+    );
+  }
+  const cells: { label: string; value: number | null }[] = [
+    { label: "Sharpe(年化)", value: result.sharpeAnnualized },
+    { label: "Sortino(年化)", value: result.sortinoAnnualized },
+    { label: "Calmar(年化)", value: result.calmarAnnualized },
+  ];
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-3">
+        {cells.map((c) => (
+          <div key={c.label}>
+            <div className="text-[0.72rem] text-text-secondary">{c.label}</div>
+            <div className="num text-[1.1rem] font-semibold">
+              {c.value === null ? "—" : fmt(c.value, 2)}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2.5 text-[0.72rem] text-text-tertiary">
+        {result.usingCapitalReturns
+          ? `以 ${result.sampleDays} 個交易日、換算成帳戶總資金報酬率計算。`
+          : `以 ${result.sampleDays} 個交易日、金額本身(未設定帳戶總資金)計算——比率仍有效,但無法讀成年化百分比。`}
+      </p>
+    </div>
+  );
+}
+
+function WinLossComparisonCard({ result }: { result: ReturnType<typeof winLossComparison> }) {
+  const rows: { label: string; win: number | null; loss: number | null; unit: string; decimals: number }[] = [
+    { label: "筆數", win: result.win.n, loss: result.loss.n, unit: "", decimals: 0 },
+    {
+      label: "平均部位大小",
+      win: result.win.avgPositionSize,
+      loss: result.loss.avgPositionSize,
+      unit: "",
+      decimals: 2,
+    },
+    {
+      label: "平均槓桿",
+      win: result.win.avgLeverage,
+      loss: result.loss.avgLeverage,
+      unit: "x",
+      decimals: 1,
+    },
+    { label: "平均 R", win: result.win.avgR, loss: result.loss.avgR, unit: "R", decimals: 2 },
+  ];
+  if (result.win.n === 0 && result.loss.n === 0) {
+    return <p className="text-[0.82rem] text-text-secondary">還沒有已平倉交易。</p>;
+  }
+  return (
+    <table className="w-full border-collapse text-[0.85rem]">
+      <thead>
+        <tr>
+          {["", "贏的交易", "輸的交易"].map((h, i) => (
+            <th
+              key={h}
+              className={`border-b border-border px-2.5 py-1.5 text-[0.75rem] font-semibold text-text-secondary ${
+                i === 0 ? "text-left" : "text-right"
+              }`}
+            >
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.label}>
+            <td className="border-b border-border px-2.5 py-1.5 text-text-secondary">{r.label}</td>
+            <td className="num border-b border-border px-2.5 py-1.5 text-right text-profit">
+              {r.win === null ? "—" : `${fmt(r.win, r.decimals)}${r.unit}`}
+            </td>
+            <td className="num border-b border-border px-2.5 py-1.5 text-right text-loss">
+              {r.loss === null ? "—" : `${fmt(r.loss, r.decimals)}${r.unit}`}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function BucketTable({ buckets, label }: { buckets: PerfBucket[]; label: string }) {
+  if (buckets.length === 0) {
+    return (
+      <p className="text-[0.82rem] text-text-secondary">
+        目前沒有交易有{label}資料。
+      </p>
+    );
+  }
+  return (
+    <table className="w-full border-collapse text-[0.85rem]">
+      <thead>
+        <tr>
+          {[label, "筆數", "勝率", "損益"].map((h, i) => (
+            <th
+              key={h}
+              className={`border-b border-border px-2 py-1.5 text-[0.75rem] font-semibold text-text-secondary ${
+                i === 0 ? "text-left" : "text-right"
+              }`}
+            >
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {buckets.map((b) => (
+          <tr key={b.rangeLabel}>
+            <td className="border-b border-border px-2 py-1.5">{b.rangeLabel}</td>
+            <td className="num border-b border-border px-2 py-1.5 text-right">{b.n}</td>
+            <td className="num border-b border-border px-2 py-1.5 text-right">
+              {b.winRate === null ? "—" : `${fmt(b.winRate, 1)}%`}
+            </td>
+            <td
+              className={`num border-b border-border px-2 py-1.5 text-right font-semibold ${
+                b.pnl >= 0 ? "text-profit" : "text-loss"
+              }`}
+            >
+              {signed(b.pnl)}U
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function HourlyTable({ buckets }: { buckets: ReturnType<typeof hourOfDayBreakdown> }) {
+  if (buckets.length === 0) {
+    return <p className="text-[0.82rem] text-text-secondary">還沒有已平倉交易。</p>;
+  }
+  const max = Math.max(1, ...buckets.map((b) => Math.abs(b.pnl)));
+  return (
+    <div className="flex h-[120px] items-end gap-1">
+      {buckets.map((b) => (
+        <div
+          key={b.hour}
+          className="group relative flex-1"
+          title={`${b.hour}時 · ${signed(b.pnl)}U · ${b.n}筆${b.winRate === null ? "" : ` · 勝率${fmt(b.winRate, 0)}%`}`}
+        >
+          <div
+            className={`w-full rounded-t-sm ${b.pnl >= 0 ? "bg-profit" : "bg-loss"}`}
+            style={{ height: `${(Math.abs(b.pnl) / max) * 100}px` }}
+          />
+          <div className="mt-1 truncate text-center text-[0.58rem] text-text-tertiary">
+            {b.hour}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DailyBarChart({ data }: { data: { date: string; pnl: number; count: number }[] }) {
+  const [hover, setHover] = useState<number | null>(null);
   if (data.length === 0) {
     return <p className="text-[0.82rem] text-text-secondary">還沒有已平倉交易。</p>;
   }
@@ -106,50 +348,98 @@ function DailyBarChart({ data }: { data: { date: string; pnl: number; count: num
   const H = 160;
   const barW = W / data.length;
   const zeroY = H / 2;
+  const hovered = hover !== null ? data[hover] : null;
+  const tickIdx = [0, Math.floor((data.length - 1) / 2), data.length - 1];
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" role="img" aria-label="每日損益長條圖">
-      <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="var(--border)" strokeWidth="1" />
-      {data.map((d, i) => {
-        const barH = (Math.abs(d.pnl) / max) * (H / 2 - 4);
-        const x = i * barW + barW * 0.15;
-        const w = barW * 0.7;
-        const y = d.pnl >= 0 ? zeroY - barH : zeroY;
-        return (
-          <rect
-            key={d.date}
-            x={x}
-            y={y}
-            width={Math.max(1, w)}
-            height={Math.max(1, barH)}
-            fill={d.pnl >= 0 ? "var(--profit)" : "var(--loss)"}
-          >
-            <title>{`${d.date} · ${signed(d.pnl)}U · ${d.count}筆`}</title>
-          </rect>
-        );
-      })}
-    </svg>
+    <div>
+      <div className="mb-1.5 h-4 text-[0.76rem] text-text-secondary">
+        {hovered && (
+          <>
+            <span className="text-text-tertiary">{hovered.date} · </span>
+            <span className={`num font-semibold ${hovered.pnl >= 0 ? "text-profit" : "text-loss"}`}>
+              {signed(hovered.pnl)}U
+            </span>
+            <span className="text-text-tertiary"> · {hovered.count}筆</span>
+          </>
+        )}
+      </div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        height={H}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="每日損益長條圖"
+        onMouseLeave={() => setHover(null)}
+      >
+        <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="var(--border)" strokeWidth="1" />
+        {data.map((d, i) => {
+          const barH = (Math.abs(d.pnl) / max) * (H / 2 - 4);
+          const x = i * barW + barW * 0.15;
+          const w = barW * 0.7;
+          const y = d.pnl >= 0 ? zeroY - barH : zeroY;
+          return (
+            <g key={d.date} onMouseEnter={() => setHover(i)}>
+              <rect x={i * barW} y={0} width={barW} height={H} fill="transparent" />
+              <rect
+                x={x}
+                y={y}
+                width={Math.max(1, w)}
+                height={Math.max(1, barH)}
+                fill={d.pnl >= 0 ? "var(--profit)" : "var(--loss)"}
+                opacity={hover === null || hover === i ? 1 : 0.45}
+              />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="mt-1 flex justify-between text-[0.68rem] text-text-tertiary">
+        {tickIdx.map((i, k) => (
+          <span key={k}>{data[i].date}</span>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function HistogramChart({ buckets }: { buckets: HistogramBucket[] }) {
+function HistogramChart({ buckets, unit }: { buckets: HistogramBucket[]; unit: string }) {
+  const [hover, setHover] = useState<number | null>(null);
   if (buckets.length === 0) {
     return <p className="text-[0.82rem] text-text-secondary">還沒有資料。</p>;
   }
   const max = Math.max(1, ...buckets.map((b) => b.count));
+  const hovered = hover !== null ? buckets[hover] : null;
   return (
-    <div className="flex h-[140px] items-end gap-1">
-      {buckets.map((b) => (
-        <div key={b.rangeLabel} className="group relative flex-1" title={`${b.rangeLabel} · ${b.count} 筆`}>
+    <div>
+      <div className="mb-1.5 h-4 text-[0.76rem] text-text-secondary">
+        {hovered && (
+          <>
+            <span className="text-text-tertiary">{hovered.rangeLabel}{unit} · </span>
+            <span className="num font-semibold">{hovered.count} 筆</span>
+          </>
+        )}
+      </div>
+      <div className="flex h-[124px] items-end gap-1" onMouseLeave={() => setHover(null)}>
+        {buckets.map((b, i) => (
           <div
-            className={`w-full rounded-t-sm ${b.rangeStart >= 0 ? "bg-profit" : "bg-loss"}`}
-            style={{ height: `${(b.count / max) * 130}px` }}
-          />
-          <div className="mt-1 truncate text-center text-[0.6rem] text-text-tertiary">
-            {b.count > 0 ? b.count : ""}
+            key={b.rangeLabel}
+            className="group relative flex-1"
+            onMouseEnter={() => setHover(i)}
+          >
+            <div
+              className={`w-full rounded-t-sm ${b.rangeStart >= 0 ? "bg-profit" : "bg-loss"}`}
+              style={{
+                height: `${(b.count / max) * 130}px`,
+                opacity: hover === null || hover === i ? 1 : 0.45,
+              }}
+            />
+            <div className="mt-1 truncate text-center text-[0.6rem] text-text-tertiary">
+              {b.count > 0 ? b.count : ""}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

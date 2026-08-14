@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { sampleTier, SAMPLE_TIER_LABEL } from "@/lib/stats";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 // 對應 prototype 的 Setup 分析頁:Setup 排行 + 依維度比較。
 
@@ -158,9 +160,14 @@ export function SetupView({
   return (
     <>
       <section className="mb-5">
-        <h2 className="mb-2.5 text-[0.82rem] font-semibold text-text-secondary">
-          Setup 排行
-        </h2>
+        <div className="mb-2.5 flex items-center gap-1.5">
+          <h2 className="text-[0.82rem] font-semibold text-text-secondary">
+            Setup 排行
+          </h2>
+          <HelpTooltip>
+            依累計損益排序,不是校正過「多重比較」的信心分數——測的 Setup 越多,排第一名光靠運氣的機率也越高,目前只用交易數做粗略的樣本量分級提醒。
+          </HelpTooltip>
+        </div>
         {setupRows.length === 0 ? (
           <div className="rounded border border-dashed border-border bg-surface px-5 py-8 text-center">
             <div className="mb-1 text-[0.88rem] font-semibold text-text-secondary">
@@ -181,9 +188,14 @@ export function SetupView({
       </section>
 
       <section className="rounded border border-border bg-surface px-4 py-4">
-        <h2 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
-          依維度比較
-        </h2>
+        <div className="mb-3 flex items-center gap-1.5">
+          <h2 className="text-[0.82rem] font-semibold text-text-secondary">
+            依維度比較
+          </h2>
+          <HelpTooltip>
+            把已平倉交易依所選維度分組,各自算勝率/平均R/累計損益。商品與星期幾直接用系統資料算,其他維度來自你自己填的自訂欄位。
+          </HelpTooltip>
+        </div>
         <div className="mb-3.5 flex flex-wrap gap-1.5">
           {DIMENSIONS.map((d) => (
             <button
@@ -240,10 +252,18 @@ export function SetupView({
                 </tr>
               </thead>
               <tbody>
-                {dimRows.map((r) => (
+                {dimRows.map((r) => {
+                  const tier = sampleTier(r.n);
+                  const tierLabel = tier === "sufficient" ? null : SAMPLE_TIER_LABEL[tier];
+                  return (
                   <tr key={r.key}>
                     <td className="border-b border-border px-2.5 py-2">
                       {r.key}
+                      {tierLabel && (
+                        <span className="ml-1.5 text-[0.68rem] text-text-tertiary">
+                          {tierLabel}
+                        </span>
+                      )}
                     </td>
                     <td className="num border-b border-border px-2.5 py-2 text-right">
                       {r.n}
@@ -262,7 +282,8 @@ export function SetupView({
                       {signed(r.pnl)}U
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             {active.note && (
@@ -278,9 +299,16 @@ export function SetupView({
 }
 
 function SetupRow({ row }: { row: Row }) {
+  const tier = sampleTier(row.n);
+  const tierLabel = tier === "sufficient" ? null : SAMPLE_TIER_LABEL[tier];
   return (
     <div className="grid grid-cols-[1.4fr_repeat(4,1fr)] items-center gap-3 rounded border border-border bg-surface px-4 py-3">
-      <div className="text-[0.92rem] font-semibold">{row.key}</div>
+      <div>
+        <div className="text-[0.92rem] font-semibold">{row.key}</div>
+        {tierLabel && (
+          <div className="mt-0.5 text-[0.68rem] text-text-tertiary">{tierLabel}</div>
+        )}
+      </div>
       {[
         { l: "交易數", v: String(row.n) },
         {

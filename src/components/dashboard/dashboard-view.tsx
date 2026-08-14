@@ -16,6 +16,7 @@ import {
   resolveDateRange,
   type DateRangeValue,
 } from "@/components/dashboard/date-range-select";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 function fmt(n: number, digits = 2) {
   return n.toLocaleString("en-US", {
@@ -233,6 +234,7 @@ function StatGrid({ summary }: { summary: ReturnType<typeof summarise> }) {
 function EquityChart({ curve }: { curve: ReturnType<typeof equityCurve> }) {
   const W = 480;
   const H = 150;
+  const [hover, setHover] = useState<number | null>(null);
 
   if (curve.length < 2) {
     return (
@@ -257,17 +259,36 @@ function EquityChart({ curve }: { curve: ReturnType<typeof equityCurve> }) {
   const points = curve.map((p, i) => `${x(i)},${y(p.equity)}`).join(" ");
   const last = curve[curve.length - 1].equity;
   const up = last >= 0;
+  const hovered = hover !== null ? curve[hover] : null;
+
+  // 日期軸只取頭/中/尾三個刻度,避免點數多時擠成一團看不清
+  const tickIdx = [0, Math.floor((curve.length - 1) / 2), curve.length - 1];
 
   return (
     <div className="rounded border border-border bg-surface px-4 py-4">
-      <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-[0.82rem] font-semibold text-text-secondary">
-          累計損益曲線
-        </h3>
-        <span
-          className={`num text-[0.85rem] font-semibold ${up ? "text-profit" : "text-loss"}`}
-        >
-          {signed(last)}U
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-[0.82rem] font-semibold text-text-secondary">
+            累計損益曲線
+          </h3>
+          <HelpTooltip>
+            依平倉時間排序後,把每筆已實現損益累加起來的曲線——不是帳戶淨值(不含未平倉部位浮盈虧、也不含入金/出金)。滑鼠移到曲線上看該筆交易當下的累計損益與這筆本身的損益。
+          </HelpTooltip>
+        </div>
+        <span className="text-[0.78rem] text-text-secondary">
+          {hovered ? (
+            <>
+              <span className="text-text-tertiary">{hovered.closedAt.slice(0, 10)} · </span>
+              <span className={`num font-semibold ${hovered.equity >= 0 ? "text-profit" : "text-loss"}`}>
+                {signed(hovered.equity)}U
+              </span>
+              <span className="text-text-tertiary"> (該筆 {signed(hovered.pnl)}U)</span>
+            </>
+          ) : (
+            <span className={`num font-semibold ${up ? "text-profit" : "text-loss"}`}>
+              {signed(last)}U
+            </span>
+          )}
         </span>
       </div>
       <svg
@@ -277,6 +298,7 @@ function EquityChart({ curve }: { curve: ReturnType<typeof equityCurve> }) {
         preserveAspectRatio="none"
         role="img"
         aria-label={`累計損益曲線,期末 ${fmt(last)}U`}
+        onMouseLeave={() => setHover(null)}
       >
         {/* 零軸:有了它才看得出何時由盈轉虧 */}
         {min < 0 && max > 0 && (
@@ -297,7 +319,33 @@ function EquityChart({ curve }: { curve: ReturnType<typeof equityCurve> }) {
           strokeWidth="2"
           vectorEffect="non-scaling-stroke"
         />
+        {hovered && (
+          <>
+            <line x1={x(hover as number)} y1="0" x2={x(hover as number)} y2={H} stroke="var(--border)" strokeWidth="1" />
+            <circle cx={x(hover as number)} cy={y(hovered.equity)} r="3.5" fill={hovered.equity >= 0 ? "var(--profit)" : "var(--loss)"} />
+          </>
+        )}
+        {/* 逐點透明命中區,滑鼠移到任一段就抓最近的點 */}
+        {curve.map((_, i) => (
+          <rect
+            key={i}
+            x={i === 0 ? 0 : (x(i - 1) + x(i)) / 2}
+            y={0}
+            width={
+              (i === 0 ? (x(1) - x(0)) / 2 : (x(i) - x(i - 1)) / 2) +
+              (i === curve.length - 1 ? (x(i) - x(i - 1)) / 2 : (x(i + 1) - x(i)) / 2)
+            }
+            height={H}
+            fill="transparent"
+            onMouseEnter={() => setHover(i)}
+          />
+        ))}
       </svg>
+      <div className="mt-1 flex justify-between text-[0.68rem] text-text-tertiary">
+        {tickIdx.map((i, k) => (
+          <span key={k}>{curve[i].closedAt.slice(0, 10)}</span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -308,9 +356,14 @@ function WinLossCard({ summary }: { summary: ReturnType<typeof summarise> }) {
 
   return (
     <div className="rounded border border-border bg-surface px-4 py-4">
-      <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">
-        總獲利 vs 總虧損
-      </h3>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-[0.82rem] font-semibold text-text-secondary">
+          總獲利 vs 總虧損
+        </h3>
+        <HelpTooltip>
+          所有已平倉交易裡,獲利交易的損益總和 vs 虧損交易的損益總和(絕對值),用長條比例呈現兩者相對規模——跟獲利因子(總獲利/總虧損)是同一組數字的視覺化版本。
+        </HelpTooltip>
+      </div>
       <div className="mb-2 flex h-2.5 overflow-hidden rounded-full border border-border">
         <div className="bg-profit" style={{ width: `${profitPct}%` }} />
         <div className="bg-loss" style={{ width: `${100 - profitPct}%` }} />
@@ -385,6 +438,9 @@ function CalendarCard({ trades }: { trades: TradePoint[] }) {
               <path d="M8 4l6 6-6 6" />
             </svg>
           </button>
+          <HelpTooltip>
+            每格顯示當天已實現損益加總與交易筆數,依你的本地時區分組(不是伺服器時區)。顏色只反映當天是賺是賠,深淺不代表金額大小。
+          </HelpTooltip>
         </div>
         <div className="flex gap-4 text-[0.78rem] text-text-secondary" suppressHydrationWarning>
           <span>

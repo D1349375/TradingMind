@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { sampleTier, SAMPLE_TIER_LABEL } from "@/lib/stats";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 export type SetupWithTrades = {
   id: string;
@@ -55,9 +57,14 @@ export function PlaybookView({ setups }: { setups: SetupWithTrades[] }) {
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="mb-2.5 text-[0.82rem] font-semibold text-text-secondary">
-          已登記 Setup 排行
-        </h2>
+        <div className="mb-2.5 flex items-center gap-1.5">
+          <h2 className="text-[0.82rem] font-semibold text-text-secondary">
+            已登記 Setup 排行
+          </h2>
+          <HelpTooltip>
+            依累計損益排序,不是校正過「多重比較」的信心分數——測的 Setup 越多,排第一名光靠運氣的機率也越高。目前只用交易數做粗略的樣本量分級提醒,完整的統計驗證(PSR/DSR/PBO)還沒接進來。
+          </HelpTooltip>
+        </div>
         {registered.length === 0 ? (
           <div className="rounded border border-dashed border-border bg-surface px-5 py-8 text-center text-[0.82rem] text-text-secondary">
             還沒有任何 Setup 填過「經濟機制」,不會出現在排行——見下方「尚未登記」清單。
@@ -96,6 +103,7 @@ function SetupCard({
 }) {
   const [editing, setEditing] = useState(false);
   const router = useRouter();
+  const tier = sampleTier(s.n);
 
   if (editing) {
     return <SetupEditForm setup={setup} onDone={() => setEditing(false)} />;
@@ -149,6 +157,9 @@ function SetupCard({
         </p>
       )}
 
+      {tier !== "sufficient" && (
+        <p className="mb-2 text-[0.72rem] text-text-tertiary">{SAMPLE_TIER_LABEL[tier]}</p>
+      )}
       <div className="grid grid-cols-4 gap-3">
         {[
           { l: "交易數", v: String(s.n) },

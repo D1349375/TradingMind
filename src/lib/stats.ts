@@ -8,6 +8,8 @@ export type TradePoint = {
   closedAt: string | null; // ISO
   realizedPnl: number | null;
   rMultiple: number | null;
+  positionSize?: number | null;
+  leverage?: number | null;
 };
 
 export type Summary = {
@@ -231,6 +233,234 @@ export function simulateRuinRisk(
     ruinProbabilityPct: (ruinCount / simulations) * 100,
   };
 }
+
+export type RiskAdjustedMetrics = {
+  available: boolean;
+  unavailableReason?: string;
+  sampleDays: number;
+  sharpeAnnualized: number | null;
+  sortinoAnnualized: number | null;
+  calmarAnnualized: number | null;
+  usingCapitalReturns: boolean; // false 時是用金額本身算比率(比率本身有效,但無法讀成年化百分比)
+};
+
+// 加密貨幣市場全年無休交易,年化天數用 365,不是股市慣用的 252。
+const ANNUALIZATION_DAYS = 365;
+
+// 風險調整報酬指標(Sharpe/Sortino/Calmar),用「本地日」損益序列計算。
+// 有帳戶總資金時換算成報酬率(可讀成年化百分比);沒有的話直接用金額本身算——
+// mean/std 的比率不受單位縮放影響,所以 Sharpe/Sortino 數值一樣有效,只是
+// Calmar 的「年化報酬」在沒有總資金時無法讀成百分比,只能當金額本身的比率看。
+export function riskAdjustedMetrics(
+  trades: TradePoint[],
+  totalCapital: number | null,
+): RiskAdjustedMetrics {
+  const byDay = groupByLocalDay(trades);
+  const dailyPnls = [...byDay.values()].map((v) => v.pnl);
+  const n = dailyPnls.length;
+
+  if (n < 20) {
+    return {
+      available: false,
+      unavailableReason: `目前只有 ${n} 個有交易的日子,樣本太少(建議至少 20 天),算出來的比率不穩定,暫不顯示。`,
+      sampleDays: n,
+      sharpeAnnualized: null,
+      sortinoAnnualized: null,
+      calmarAnnualized: null,
+      usingCapitalReturns: false,
+    };
+  }
+
+  const usingCapitalReturns = totalCapital !== null && totalCapital > 0;
+  const series = usingCapitalReturns
+    ? dailyPnls.map((p) => p / (totalCapital as number))
+    : dailyPnls;
+
+  const mean = series.reduce((s, v) => s + v, 0) / n;
+  const variance = series.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1);
+  const std = Math.sqrt(variance);
+  const downside = series.filter((v) => v < 0);
+  const downsideStd =
+    downside.length > 1
+      ? Math.sqrt(downside.reduce((s, v) => s + v * v, 0) / (downside.length - 1))
+      : null;
+
+  const sharpeAnnualized = std > 0 ? (mean / std) * Math.sqrt(ANNUALIZATION_DAYS) : null;
+  const sortinoAnnualized =
+    downsideStd !== null && downsideStd > 0
+      ? (mean / downsideStd) * Math.sqrt(ANNUALIZATION_DAYS)
+      : null;
+
+  const annualizedReturn = mean * ANNUALIZATION_DAYS;
+  const ddRaw = maxDrawdown(equityCurve(trades).map((p) => p.equity)); // 負值或 0
+  const ddInSeriesUnit = usingCapitalReturns ? ddRaw / (totalCapital as number) : ddRaw;
+  const calmarAnnualized =
+    ddInSeriesUnit < 0 ? annualizedReturn / Math.abs(ddInSeriesUnit) : null;
+
+  return {
+    available: true,
+    sampleDays: n,
+    sharpeAnnualized,
+    sortinoAnnualized,
+    calmarAnnualized,
+    usingCapitalReturns,
+  };
+}
+
+export type WinLossComparisonSide = {
+  n: number;
+  avgPositionSize: number | null;
+  avgLeverage: number | null;
+  avgR: number | null;
+};
+
+export type WinLossComparison = {
+  win: WinLossComparisonSide;
+  loss: WinLossComparisonSide;
+};
+
+// 贏的交易 vs 輸的交易,在部位大小/槓桿/R 上有沒有系統性差異
+// (例如「一放大部位就開始虧」這種模式)。
+export function winLossComparison(trades: TradePoint[]): WinLossComparison {
+  const wins = trades.filter((t) => (t.realizedPnl ?? 0) > 0);
+  const losses = trades.filter((t) => (t.realizedPnl ?? 0) < 0);
+
+  const side = (list: TradePoint[]): WinLossComparisonSide => {
+    const avg = (values: number[]) =>
+      values.length ? values.reduce((s, v) => s + v, 0) / values.length : null;
+    return {
+      n: list.length,
+      avgPositionSize: avg(
+        list.map((t) => t.positionSize).filter((v): v is number => v != null),
+      ),
+      avgLeverage: avg(
+        list.map((t) => t.leverage).filter((v): v is number => v != null),
+      ),
+      avgR: avg(list.map((t) => t.rMultiple).filter((v): v is number => v !== null)),
+    };
+  };
+
+  return { win: side(wins), loss: side(losses) };
+}
+
+export type HourBucket = {
+  hour: number;
+  n: number;
+  winRate: number | null;
+  avgR: number | null;
+  pnl: number;
+};
+
+// 依平倉時間的「本地小時」分組,找出一天中哪個時段表現較好/較差。
+// 必須在瀏覽器端呼叫(理由同 groupByLocalDay:UTC 存值,本地小時才是使用者認知的時段)。
+export function hourOfDayBreakdown(trades: TradePoint[]): HourBucket[] {
+  const buckets = new Map<number, TradePoint[]>();
+  for (const t of trades) {
+    if (!t.closedAt || t.realizedPnl === null) continue;
+    const h = new Date(t.closedAt).getHours();
+    const arr = buckets.get(h) ?? [];
+    arr.push(t);
+    buckets.set(h, arr);
+  }
+  return [...buckets.entries()]
+    .map(([hour, list]) => {
+      const pnls = list.map((t) => t.realizedPnl).filter((p): p is number => p !== null);
+      const wins = pnls.filter((p) => p > 0).length;
+      const losses = pnls.filter((p) => p < 0).length;
+      const rs = list.map((t) => t.rMultiple).filter((r): r is number => r !== null);
+      return {
+        hour,
+        n: list.length,
+        winRate: wins + losses > 0 ? (wins / (wins + losses)) * 100 : null,
+        avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
+        pnl: pnls.reduce((s, p) => s + p, 0),
+      };
+    })
+    .sort((a, b) => a.hour - b.hour);
+}
+
+export type PerfBucket = {
+  rangeLabel: string;
+  n: number;
+  winRate: number | null;
+  avgR: number | null;
+  pnl: number;
+};
+
+function fmtBucketBound(n: number) {
+  return n.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+// 依連續數值欄位(部位大小/槓桿)等寬分桶,看不同區間的績效——
+// 例如「部位一放大是不是就開始輸」。桶數少(預設4)是因為交易日誌樣本量
+// 通常遠小於系統化回測,桶切太細每桶樣本會過少。
+function performanceByContinuousField(
+  trades: TradePoint[],
+  getField: (t: TradePoint) => number | null | undefined,
+  bucketCount = 4,
+): PerfBucket[] {
+  const withValue = trades
+    .map((t) => ({ t, v: getField(t) }))
+    .filter((x): x is { t: TradePoint; v: number } => x.v !== null && x.v !== undefined);
+  if (withValue.length === 0) return [];
+
+  const values = withValue.map((x) => x.v);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+  const buckets: { t: TradePoint; v: number }[][] = Array.from({ length: bucketCount }, () => []);
+  for (const x of withValue) {
+    const idx =
+      range === 0 ? 0 : Math.min(bucketCount - 1, Math.floor(((x.v - min) / range) * bucketCount));
+    buckets[idx].push(x);
+  }
+  const width = range / bucketCount;
+
+  return buckets
+    .map((list, i) => {
+      const start = min + i * width;
+      const end = i === bucketCount - 1 ? max : start + width;
+      const pnls = list.map(({ t }) => t.realizedPnl).filter((p): p is number => p !== null);
+      const wins = pnls.filter((p) => p > 0).length;
+      const losses = pnls.filter((p) => p < 0).length;
+      const rs = list.map(({ t }) => t.rMultiple).filter((r): r is number => r !== null);
+      return {
+        rangeLabel:
+          range === 0
+            ? fmtBucketBound(min)
+            : `${fmtBucketBound(start)}~${fmtBucketBound(end)}`,
+        n: list.length,
+        winRate: wins + losses > 0 ? (wins / (wins + losses)) * 100 : null,
+        avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
+        pnl: pnls.reduce((s, p) => s + p, 0),
+      };
+    })
+    .filter((b) => b.n > 0);
+}
+
+export function performanceByPositionSize(trades: TradePoint[], bucketCount = 4): PerfBucket[] {
+  return performanceByContinuousField(trades, (t) => t.positionSize, bucketCount);
+}
+
+export function performanceByLeverage(trades: TradePoint[], bucketCount = 4): PerfBucket[] {
+  return performanceByContinuousField(trades, (t) => t.leverage, bucketCount);
+}
+
+export type SampleTier = "insufficient" | "building" | "sufficient";
+
+// 樣本數分級(TradeMind_裁量交易版統計驗證流程規劃.md 3.1節的裁量交易版校準):
+// <20 筆「數據過少,僅供參考」、20-50 筆「初步趨勢,仍需累積」、50+ 筆才算有基礎樣本。
+// 分級只改變呈現(要不要加警語),不改變任何數字本身怎麼算,也不影響排序。
+export function sampleTier(n: number): SampleTier {
+  if (n < 20) return "insufficient";
+  if (n < 50) return "building";
+  return "sufficient";
+}
+
+export const SAMPLE_TIER_LABEL: Record<Exclude<SampleTier, "sufficient">, string> = {
+  insufficient: "數據過少,僅供參考",
+  building: "初步趨勢,仍需累積",
+};
 
 // 依「本地日期」分組的每日損益。
 // 分組必須在瀏覽器端做——交易時間存的是 UTC,但使用者認知的「哪一天」
