@@ -107,7 +107,7 @@ export function DashboardView({
             還沒有交易資料
           </div>
           <p className="text-[0.82rem] text-text-secondary">
-            到「設定 → 交易所連線」連接 Bybit 後按「立即同步」。
+            到「設定 → 交易所連線」連接 Bybit 同步,或到「交易記錄」頁用 CSV 匯入、手動新增交易。
           </p>
         </div>
       </>

@@ -194,7 +194,7 @@ export function TradesView({
           還沒有任何交易紀錄
         </div>
         <p className="text-[0.82rem] text-text-secondary">
-          到「設定 → 交易所連線」連接 Bybit 後按「立即同步」,即可匯入已平倉的交易。
+          到「設定 → 交易所連線」連接 Bybit 後按「立即同步」,或用 CSV 匯入,也可以直接手動新增交易。
         </p>
       </div>
     );

@@ -151,7 +151,7 @@ export function SetupView({
           還沒有交易資料
         </div>
         <p className="text-[0.82rem] text-text-secondary">
-          到「設定 → 交易所連線」同步交易後,這裡會依實際資料計算。
+          同步 Bybit、CSV 匯入或手動新增交易後,這裡會依實際資料計算。
         </p>
       </div>
     );
