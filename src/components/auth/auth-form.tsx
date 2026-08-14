@@ -177,6 +177,20 @@ export function AuthForm({ mode }: { mode: Mode }) {
         >
           {loading ? "處理中…" : isSignup ? "建立帳號" : "登入"}
         </button>
+
+        {isSignup && (
+          <p className="text-center text-[0.76rem] leading-relaxed text-text-tertiary">
+            建立帳號即代表你同意{" "}
+            <Link href="/terms" className="underline hover:text-text-secondary">
+              服務條款
+            </Link>{" "}
+            與{" "}
+            <Link href="/privacy" className="underline hover:text-text-secondary">
+              隱私權政策
+            </Link>
+            。
+          </p>
+        )}
       </form>
 
       <div className="my-5 flex items-center gap-3">
