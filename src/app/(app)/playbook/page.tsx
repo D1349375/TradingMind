@@ -10,15 +10,19 @@ export const metadata: Metadata = {
 export default async function PlaybookPage() {
   const user = await getCurrentUser();
 
-  const rows = await prisma.setup.findMany({
-    where: { userId: user!.id },
-    orderBy: { createdAt: "asc" },
-    include: {
-      trades: {
-        select: { realizedPnl: true, rMultiple: true },
+  const [rows, goal] = await Promise.all([
+    prisma.setup.findMany({
+      where: { userId: user!.id },
+      orderBy: { createdAt: "asc" },
+      include: {
+        trades: {
+          select: { realizedPnl: true, rMultiple: true, closedAt: true },
+        },
       },
-    },
-  });
+    }),
+    prisma.goal.findUnique({ where: { userId: user!.id } }),
+  ]);
+  const totalCapital = goal?.totalCapital ? Number(goal.totalCapital) : null;
 
   const setups: SetupWithTrades[] = rows.map((s) => ({
     id: s.id,
@@ -29,6 +33,7 @@ export default async function PlaybookPage() {
     trades: s.trades.map((t) => ({
       realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
       rMultiple: t.rMultiple === null ? null : Number(t.rMultiple),
+      closedAt: t.closedAt?.toISOString() ?? null,
     })),
   }));
 
@@ -41,7 +46,7 @@ export default async function PlaybookPage() {
             已登記的 Setup 假設,依實際交易數據驗證
           </p>
         </div>
-        <PlaybookView setups={setups} />
+        <PlaybookView setups={setups} totalCapital={totalCapital} />
       </div>
     </div>
   );

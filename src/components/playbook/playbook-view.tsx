@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { sampleTier, SAMPLE_TIER_LABEL } from "@/lib/stats";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { cusumSetupDecay } from "@/lib/cusum";
 
 export type SetupWithTrades = {
   id: string;
@@ -11,7 +12,7 @@ export type SetupWithTrades = {
   entryLogic: string | null;
   economicRationale: string | null;
   registered: boolean;
-  trades: { realizedPnl: number | null; rMultiple: number | null }[];
+  trades: { realizedPnl: number | null; rMultiple: number | null; closedAt: string | null }[];
 };
 
 function fmt(n: number, d = 2) {
@@ -34,7 +35,13 @@ function stats(trades: SetupWithTrades["trades"]) {
 
 // 已登記的 Setup(填過經濟機制)才進 Playbook 排行比較——沒登記的只是
 // 假設清單,拿來跟已驗證的排在一起比較沒有意義。見 schema 的 Setup 註解。
-export function PlaybookView({ setups }: { setups: SetupWithTrades[] }) {
+export function PlaybookView({
+  setups,
+  totalCapital,
+}: {
+  setups: SetupWithTrades[];
+  totalCapital: number | null;
+}) {
   const registered = setups
     .filter((s) => s.registered)
     .map((s) => ({ setup: s, stats: stats(s.trades) }))
@@ -72,7 +79,12 @@ export function PlaybookView({ setups }: { setups: SetupWithTrades[] }) {
         ) : (
           <div className="space-y-2.5">
             {registered.map(({ setup, stats: s }) => (
-              <SetupCard key={setup.id} setup={setup} stats={s} />
+              <SetupCard
+                key={setup.id}
+                setup={setup}
+                stats={s}
+                totalCapital={totalCapital}
+              />
             ))}
           </div>
         )}
@@ -85,7 +97,12 @@ export function PlaybookView({ setups }: { setups: SetupWithTrades[] }) {
           </h2>
           <div className="space-y-2.5">
             {unregistered.map((setup) => (
-              <SetupCard key={setup.id} setup={setup} stats={stats(setup.trades)} />
+              <SetupCard
+                key={setup.id}
+                setup={setup}
+                stats={stats(setup.trades)}
+                totalCapital={totalCapital}
+              />
             ))}
           </div>
         </section>
@@ -97,13 +114,16 @@ export function PlaybookView({ setups }: { setups: SetupWithTrades[] }) {
 function SetupCard({
   setup,
   stats: s,
+  totalCapital,
 }: {
   setup: SetupWithTrades;
   stats: ReturnType<typeof stats>;
+  totalCapital: number | null;
 }) {
   const [editing, setEditing] = useState(false);
   const router = useRouter();
   const tier = sampleTier(s.n);
+  const decay = setup.registered ? cusumSetupDecay(setup.trades, totalCapital) : null;
 
   if (editing) {
     return <SetupEditForm setup={setup} onDone={() => setEditing(false)} />;
@@ -178,6 +198,28 @@ function SetupCard({
           </div>
         </div>
       </div>
+
+      {decay && (
+        <div className="mt-2.5 flex items-start gap-1.5 border-t border-border pt-2.5">
+          <span className="pt-0.5 text-[0.72rem] font-semibold text-text-secondary">
+            衰退監測
+          </span>
+          <HelpTooltip>
+            把這個 Setup 的交易依時間對半拆:前半段當基準期、後半段當監測期,用單邊 CUSUM 檢定後半段報酬有沒有顯著低於前半段——用它自己的歷史當基準,不是跟其他 Setup 比較,也不是正式的統計顯著性以外的保證。k/h 參數用業界常見預設值(0.5/4 個標準差),沒有針對你的資料校正過。
+          </HelpTooltip>
+          {!decay.available ? (
+            <span className="text-[0.76rem] text-text-tertiary">{decay.unavailableReason}</span>
+          ) : decay.alarm ? (
+            <span className="text-[0.76rem] font-semibold text-loss">
+              近期表現顯著低於基準期(基準 {decay.baselineSize} 筆 vs 監測 {decay.monitoredSize} 筆)——不代表 Setup 失效,但值得重新檢視,先別急著加碼
+            </span>
+          ) : (
+            <span className="text-[0.76rem] text-text-secondary">
+              正常(基準 {decay.baselineSize} 筆 vs 監測 {decay.monitoredSize} 筆,未觸發警報)
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
