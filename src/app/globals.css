@@ -25,6 +25,10 @@
   --loss-bg-strong: #efe0dc;
   --warning: #96640d;
   --warning-bg: rgba(150, 100, 13, 0.1);
+  /* loading.tsx 骨架畫面用的填色。比 canvas 深、比 border 淺,實色而非
+     半透明——理由跟上面 profit-bg-strong 一樣,骨架色塊常常疊在 canvas
+     跟 surface 兩種不同底色上,半透明色在兩種底色上呈色會不一致。 */
+  --skeleton: #ebe9e3;
   --radius: 6px;
   --font: -apple-system, BlinkMacSystemFont, "Inter", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -48,6 +52,7 @@ html[data-theme="dark"] {
   --loss-bg-strong: #3e2b2a;
   --warning: #d9a441;
   --warning-bg: rgba(217, 164, 65, 0.16);
+  --skeleton: #2c2d30;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -69,6 +74,7 @@ html[data-theme="dark"] {
     --loss-bg-strong: #3e2b2a;
     --warning: #d9a441;
     --warning-bg: rgba(217, 164, 65, 0.16);
+    --skeleton: #2c2d30;
   }
 }
 

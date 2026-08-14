@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -30,7 +31,18 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {/* 點擊當下立刻出現,不用等伺服器回應——先讓使用者知道「有反應」,
+            跟頁面本身的 loading.tsx 骨架畫面互補,不是取代。顏色用
+            --accent 讓淺/深色主題自動一致,不寫死其中一個。 */}
+        <NextTopLoader
+          color="var(--accent)"
+          height={2}
+          showSpinner={false}
+          shadow={false}
+        />
+        {children}
+      </body>
     </html>
   );
 }

@@ -39,6 +39,7 @@ const config: Config = {
           DEFAULT: "var(--warning)",
           bg: "var(--warning-bg)",
         },
+        skeleton: "var(--skeleton)",
       },
       borderRadius: {
         DEFAULT: "var(--radius)",
