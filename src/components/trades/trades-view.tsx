@@ -359,6 +359,9 @@ function TradeDetail({
   const [grade, setGrade] = useState(trade.grade ?? "");
   const [ruleChecks, setRuleChecks] = useState(trade.ruleChecks);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // 雙欄對比時每個面板都變窄,固定寬度的自訂欄位會把記錄擠得很難讀,
+  // 所以做成可收合——收合後只留標題列,記錄editor拿到全部空間。
+  const [fieldsCollapsed, setFieldsCollapsed] = useState(false);
 
   async function save(payload: Record<string, unknown>) {
     setSaveState("saving");
@@ -621,15 +624,34 @@ function TradeDetail({
       {/* 記錄:左欄自訂欄位(下拉選單,壓縮高度)+ 右欄圖文編輯器,
           2026-08-14 合併自「自訂欄位」+「反思筆記/截圖」三個原本分開的分頁。 */}
       <section className={tab === "note" ? "flex gap-6" : "hidden"}>
-        <div className="w-[240px] shrink-0">
-          <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
-            自訂欄位
-          </h3>
-          <CustomFields
-            fields={fields}
-            initialValues={trade.customValues}
-            onSave={(patch) => save({ customValues: patch })}
-          />
+        <div className={fieldsCollapsed ? "shrink-0" : "w-[240px] shrink-0"}>
+          <button
+            type="button"
+            onClick={() => setFieldsCollapsed((v) => !v)}
+            aria-expanded={!fieldsCollapsed}
+            title={fieldsCollapsed ? "展開自訂欄位" : "收合自訂欄位"}
+            className="mb-2.5 flex items-center gap-1 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary hover:text-accent"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-3 w-3 shrink-0 transition-transform ${fieldsCollapsed ? "-rotate-90" : ""}`}
+            >
+              <path d="M5 7l5 6 5-6" />
+            </svg>
+            {!fieldsCollapsed && "自訂欄位"}
+          </button>
+          {!fieldsCollapsed && (
+            <CustomFields
+              fields={fields}
+              initialValues={trade.customValues}
+              onSave={(patch) => save({ customValues: patch })}
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
