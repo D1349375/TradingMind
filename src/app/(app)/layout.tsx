@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getSidebarData } from "@/lib/sidebar-data";
 import { Sidebar } from "@/components/shell/sidebar";
 import { countPendingReview } from "@/lib/notifications";
 
@@ -14,48 +14,18 @@ export default async function AppLayout({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [balance, reviewTrades, recentTrades, goal] = await Promise.all([
-    prisma.creditBalance.findUnique({
-      where: { userId: user.id },
-      select: { balance: true },
-    }),
-    prisma.trade.findMany({
-      where: { userId: user.id },
-      select: { closedAt: true, grade: true, reflectionNote: true },
-    }),
-    // 「今日虧損」是本地時區概念,查最近 3 天當緩衝,由 Sidebar 在瀏覽器端
-    // 篩出真正的「今天」——跟 Dashboard 的今日/本月計算同一個理由。
-    prisma.trade.findMany({
-      where: {
-        userId: user.id,
-        closedAt: { gte: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) },
-      },
-      select: { closedAt: true, realizedPnl: true },
-    }),
-    prisma.goal.findUnique({ where: { userId: user.id } }),
-  ]);
+  // 側邊欄資料快取 30 秒(見 lib/sidebar-data.ts 註解)——這個 layout 在
+  // 每次頁面切換都會重新執行,不快取的話等於每點一次連結就重查 4 次資料庫。
+  const { credits, reviewTrades, recentTrades, goal } = await getSidebarData(user.id);
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
         email={user.email}
-        credits={balance?.balance ?? 0}
-        pendingReview={countPendingReview(
-          reviewTrades.map((t) => ({
-            ...t,
-            closedAt: t.closedAt?.toISOString() ?? null,
-          })),
-        )}
-        recentTrades={recentTrades.map((t) => ({
-          closedAt: t.closedAt?.toISOString() ?? null,
-          realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
-        }))}
-        goal={{
-          lossLimitMode: goal?.lossLimitMode ?? "FIXED",
-          dailyLossFixed: goal?.dailyLossFixed ? Number(goal.dailyLossFixed) : null,
-          dailyLossPercent: goal?.dailyLossPercent ? Number(goal.dailyLossPercent) : null,
-          totalCapital: goal?.totalCapital ? Number(goal.totalCapital) : null,
-        }}
+        credits={credits}
+        pendingReview={countPendingReview(reviewTrades)}
+        recentTrades={recentTrades}
+        goal={goal}
       />
       <main className="flex-1 overflow-y-auto bg-canvas">{children}</main>
     </div>
