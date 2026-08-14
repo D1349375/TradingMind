@@ -9,6 +9,7 @@ import {
 import { SetupPicker, type SetupOption } from "@/components/trades/setup-picker";
 import { AiAnalysis } from "@/components/trades/ai-analysis";
 import { RichNoteEditor } from "@/components/trades/rich-note-editor";
+import { calcRMultiple } from "@/lib/r-multiple";
 
 // 對應 prototype/index.html 的 .trades-layout(左列表 / 右詳情)。
 
@@ -24,6 +25,8 @@ export type TradeDto = {
   leverage: string | null;
   fee: string;
   realizedPnl: string | null;
+  stopLossPrice: string | null;
+  takeProfitPrice: string | null;
   rMultiple: string | null;
   grade: string | null;
   reflectionNote: string | null;
@@ -357,6 +360,8 @@ function TradeDetail({
   const local = useLocalTime();
   const [note, setNote] = useState(trade.reflectionNote ?? "");
   const [grade, setGrade] = useState(trade.grade ?? "");
+  const [stopLoss, setStopLoss] = useState(trade.stopLossPrice ?? "");
+  const [takeProfit, setTakeProfit] = useState(trade.takeProfitPrice ?? "");
   const [ruleChecks, setRuleChecks] = useState(trade.ruleChecks);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   // 雙欄對比時每個面板都變窄,固定寬度的自訂欄位會把記錄擠得很難讀,
@@ -380,6 +385,13 @@ function TradeDetail({
   const pnl = Number(trade.realizedPnl ?? 0);
   const win = pnl >= 0;
   const duration = holdingDuration(trade.openedAt, trade.closedAt);
+  // 用當下輸入框裡的止損價即時算 R,不用等存檔後重新整理才看到結果。
+  const liveRMultiple = calcRMultiple(
+    trade.direction,
+    Number(trade.entryPrice),
+    trade.exitPrice === null ? null : Number(trade.exitPrice),
+    stopLoss.trim() === "" ? null : Number(stopLoss),
+  );
 
   return (
     // 面板本身可拖曳調整寬度(見 TradesView)。上限拉高到 1400px 只是防止
@@ -457,7 +469,7 @@ function TradeDetail({
         <div className="flex flex-col gap-0.5">
           <span className="text-[0.78rem] text-text-secondary">R</span>
           <span className="num text-[1.1rem] font-semibold">
-            {trade.rMultiple ? `${fmtNum(trade.rMultiple)}R` : "—"}
+            {liveRMultiple === null ? "—" : `${liveRMultiple.toFixed(2)}R`}
           </span>
         </div>
         <div className="flex flex-col gap-0.5">
@@ -529,6 +541,41 @@ function TradeDetail({
             value={`${win ? "+" : ""}${fmtNum(trade.realizedPnl)}U`}
           />
         </dl>
+      </section>
+
+      <section className={tab === "overview" ? "mb-6" : "hidden"}>
+        <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
+          風險欄位(可編輯,R 值由此推算)
+        </h3>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+          <div>
+            <dt className="mb-1 text-[0.78rem] text-text-secondary">止損價</dt>
+            <input
+              type="number"
+              step="any"
+              value={stopLoss}
+              onChange={(e) => setStopLoss(e.target.value)}
+              onBlur={() => save({ stopLossPrice: stopLoss.trim() || null })}
+              placeholder="未設定"
+              className="num w-full rounded border border-border bg-canvas px-2.5 py-1.5 text-[0.9rem] text-text outline-none placeholder:text-text-tertiary focus:border-accent"
+            />
+          </div>
+          <div>
+            <dt className="mb-1 text-[0.78rem] text-text-secondary">目標價(選填)</dt>
+            <input
+              type="number"
+              step="any"
+              value={takeProfit}
+              onChange={(e) => setTakeProfit(e.target.value)}
+              onBlur={() => save({ takeProfitPrice: takeProfit.trim() || null })}
+              placeholder="未設定"
+              className="num w-full rounded border border-border bg-canvas px-2.5 py-1.5 text-[0.9rem] text-text outline-none placeholder:text-text-tertiary focus:border-accent"
+            />
+          </div>
+        </dl>
+        <p className="mt-2 text-[0.75rem] leading-relaxed text-text-tertiary">
+          R 值 = 實際損益 ÷ 初始風險,只需要止損價就能算,不需要目標價。目標價只用來之後對照「計畫 R:R vs 實現 R」。
+        </p>
       </section>
 
       <section className={tab === "overview" ? "mb-6" : "hidden"}>

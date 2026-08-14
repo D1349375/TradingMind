@@ -31,6 +31,8 @@ function Modal({ onClose }: { onClose: () => void }) {
   const [direction, setDirection] = useState<"LONG" | "SHORT">("LONG");
   const [entryPrice, setEntryPrice] = useState("");
   const [exitPrice, setExitPrice] = useState("");
+  const [stopLossPrice, setStopLossPrice] = useState("");
+  const [takeProfitPrice, setTakeProfitPrice] = useState("");
   const [positionSize, setPositionSize] = useState("");
   const [leverage, setLeverage] = useState("");
   const [fee, setFee] = useState("");
@@ -56,6 +58,8 @@ function Modal({ onClose }: { onClose: () => void }) {
         direction,
         entryPrice,
         exitPrice: exitPrice || undefined,
+        stopLossPrice,
+        takeProfitPrice: takeProfitPrice || undefined,
         positionSize,
         leverage: leverage || undefined,
         fee: fee || undefined,
@@ -151,6 +155,33 @@ function Modal({ onClose }: { onClose: () => void }) {
               />
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>止損價</label>
+              <input
+                type="number"
+                step="any"
+                className={input}
+                value={stopLossPrice}
+                onChange={(e) => setStopLossPrice(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className={label}>目標價(選填)</label>
+              <input
+                type="number"
+                step="any"
+                className={input}
+                value={takeProfitPrice}
+                onChange={(e) => setTakeProfitPrice(e.target.value)}
+              />
+            </div>
+          </div>
+          <p className="text-[0.76rem] leading-relaxed text-text-tertiary">
+            R 值(風報比)由止損價自動算出,不需要另外填一個 R 數字。
+          </p>
 
           <div className="grid grid-cols-3 gap-3">
             <div>

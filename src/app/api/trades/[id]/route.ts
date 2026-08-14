@@ -1,8 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { calcRMultiple } from "@/lib/r-multiple";
 
 const ALLOWED_GRADES = ["A", "B", "C", "D"];
+
+function optionalNum(v: unknown): number | null | undefined {
+  if (v === undefined) return undefined; // 沒帶這個欄位,不動它
+  if (v === null || v === "") return null; // 明確清空
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 // 只開放使用者自己填的主觀欄位;自動同步欄位(價格/損益等)不接受從前端改,
 // 那些是 Bybit 的事實資料,可改就失去「強制完整性」的意義(規劃書第二節)。
@@ -19,6 +27,8 @@ export async function PATCH(
     customValues?: unknown;
     setupId?: unknown;
     ruleChecks?: unknown;
+    stopLossPrice?: unknown;
+    takeProfitPrice?: unknown;
   };
   try {
     body = await request.json();
@@ -30,7 +40,29 @@ export async function PATCH(
     reflectionNote?: string | null;
     grade?: string | null;
     setupId?: string | null;
+    stopLossPrice?: number | null;
+    takeProfitPrice?: number | null;
+    rMultiple?: number | null;
   } = {};
+
+  if ("stopLossPrice" in body) {
+    const v = optionalNum(body.stopLossPrice);
+    if (v === undefined) {
+      return NextResponse.json({ error: "止損價格式錯誤" }, { status: 400 });
+    }
+    if (v !== null && v <= 0) {
+      return NextResponse.json({ error: "止損價必須是正數" }, { status: 400 });
+    }
+    data.stopLossPrice = v;
+  }
+
+  if ("takeProfitPrice" in body) {
+    const v = optionalNum(body.takeProfitPrice);
+    if (v === undefined) {
+      return NextResponse.json({ error: "目標價格式錯誤" }, { status: 400 });
+    }
+    data.takeProfitPrice = v;
+  }
 
   if ("reflectionNote" in body) {
     if (typeof body.reflectionNote !== "string" && body.reflectionNote !== null) {
@@ -88,10 +120,22 @@ export async function PATCH(
   // 先確認這筆交易屬於這個使用者,後面的欄位值寫入才安全
   const owned = await prisma.trade.findFirst({
     where: { id: params.id, userId: user.id },
-    select: { id: true },
+    select: { id: true, direction: true, entryPrice: true, exitPrice: true, stopLossPrice: true },
   });
   if (!owned) {
     return NextResponse.json({ error: "找不到這筆交易" }, { status: 404 });
+  }
+
+  // 止損價一變動,R 值要跟著重算——用這筆交易既有的進場/出場價,
+  // 不需要使用者同時重填其他欄位。
+  if ("stopLossPrice" in data) {
+    const nextStopLoss = data.stopLossPrice ?? null;
+    data.rMultiple = calcRMultiple(
+      owned.direction,
+      Number(owned.entryPrice),
+      owned.exitPrice === null ? null : Number(owned.exitPrice),
+      nextStopLoss,
+    );
   }
 
   if (Object.keys(data).length > 0) {

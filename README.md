@@ -33,6 +33,8 @@ rm -rf .next && npm run dev
 
 **改完 schema 跑 `prisma migrate` / `prisma generate` 之後,要重啟 dev server。** 執行中的 dev server 會把舊版 Prisma Client 留在記憶體裡,新欄位/新的 nullable 設定不會生效,而且錯誤訊息會非常誤導(例如欄位可為 null 的改動沒生效時,會報成 ``Argument `user` is missing``,跟真正的原因無關)。
 
+**`prisma migrate dev` 用本機 `.env.local` 的連線池網址會整個掛住不回應**(2026-08-15 踩過)。本機開發用的是 Supabase transaction-mode pooler(port 6543,`DATABASE_URL`),這個模式跟 Prisma migration engine 的 advisory lock 機制不相容,`migrate` 指令會卡住沒有任何輸出、也不會報錯。`prisma.config.ts` 已經改成 CLI 操作(migrate/generate)優先讀 `DIRECT_URL`(session-mode pooler,port 5432),平常 `npx prisma migrate dev` 直接跑就會自動用對的網址,不用手動處理——但如果 `.env.local` 沒有設 `DIRECT_URL`,還是會退回 `DATABASE_URL` 卡住,遇到「migrate 指令沒有任何輸出、一直不結束」時先檢查這個。
+
 ## 目錄說明
 
 - `prisma/schema.prisma` — 資料庫 schema,設計依據見檔案開頭註解

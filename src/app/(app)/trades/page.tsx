@@ -58,6 +58,8 @@ export default async function TradesPage() {
     leverage: t.leverage?.toString() ?? null,
     fee: t.fee.toString(),
     realizedPnl: t.realizedPnl?.toString() ?? null,
+    stopLossPrice: t.stopLossPrice?.toString() ?? null,
+    takeProfitPrice: t.takeProfitPrice?.toString() ?? null,
     rMultiple: t.rMultiple?.toString() ?? null,
     grade: t.grade,
     reflectionNote: t.reflectionNote,

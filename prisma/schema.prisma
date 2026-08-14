@@ -114,7 +114,13 @@ model Trade {
   bybitOrderId String?     @unique // 防止同步時重複建檔
 
   // ---- 可選欄位中,結構化的先抽成真欄位;其餘走 CustomFieldValue EAV ----
-  rMultiple      Decimal?
+  // 止損價(2026-08-15 新增):新增交易時必填,可回頭編輯。R 值(rMultiple)
+  // 不再是使用者直接填的死欄位,改成 entryPrice/exitPrice/stopLossPrice
+  // 三者衍生算出(見 lib/r-multiple.ts),每次這三個值變動時重算並存回
+  // rMultiple 這個既有欄位——這樣不用動全站已經在讀 rMultiple 的地方。
+  stopLossPrice   Decimal?
+  takeProfitPrice Decimal? // 目標價,選填,只用來對照「計畫R:R vs 實現R」,不影響 rMultiple 計算
+  rMultiple       Decimal?
   grade          String? // A/B/C/D 或 1-10,存字串以兼容兩種制度
   // 富文本(HTML,Tiptap 輸出)。2026-08-14 起圖片直接以 <img> 內嵌在這裡,
   // 取代原本 screenshotBeforeUrl/screenshotAfterUrl 兩個固定版位欄位——

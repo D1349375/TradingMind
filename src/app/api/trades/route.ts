@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { calcRMultiple } from "@/lib/r-multiple";
 
 const DIRECTIONS = ["LONG", "SHORT"];
 
@@ -49,12 +50,23 @@ export async function POST(request: NextRequest) {
   if (realizedPnl === null) {
     return NextResponse.json({ error: "已實現損益不能空白" }, { status: 400 });
   }
+  const stopLossPrice = requiredNum(body.stopLossPrice);
+  if (stopLossPrice === null || stopLossPrice <= 0) {
+    return NextResponse.json({ error: "止損價必須是正數" }, { status: 400 });
+  }
 
   const openedAtRaw = typeof body.openedAt === "string" ? body.openedAt : "";
   const openedAt = openedAtRaw ? new Date(openedAtRaw) : null;
   const exitPrice = requiredNum(body.exitPrice);
+  const takeProfitPrice = requiredNum(body.takeProfitPrice);
   const leverage = requiredNum(body.leverage);
   const fee = requiredNum(body.fee) ?? 0;
+  const rMultiple = calcRMultiple(
+    direction as "LONG" | "SHORT",
+    entryPrice,
+    exitPrice,
+    stopLossPrice,
+  );
 
   const trade = await prisma.trade.create({
     data: {
@@ -67,6 +79,9 @@ export async function POST(request: NextRequest) {
       realizedPnl,
       openedAt: openedAt && !Number.isNaN(openedAt.getTime()) ? openedAt : null,
       exitPrice,
+      stopLossPrice,
+      takeProfitPrice,
+      rMultiple,
       leverage,
       fee,
       source: "MANUAL",
