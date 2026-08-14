@@ -21,6 +21,11 @@ export default async function DashboardPage() {
         rMultiple: true,
         positionSize: true,
         leverage: true,
+        direction: true,
+        entryPrice: true,
+        exitPrice: true,
+        fee: true,
+        fundingFee: true,
       },
       orderBy: { closedAt: "asc" },
     }),
@@ -51,6 +56,11 @@ export default async function DashboardPage() {
     rMultiple: t.rMultiple === null ? null : Number(t.rMultiple),
     positionSize: Number(t.positionSize),
     leverage: t.leverage === null ? null : Number(t.leverage),
+    direction: t.direction,
+    entryPrice: Number(t.entryPrice),
+    exitPrice: t.exitPrice === null ? null : Number(t.exitPrice),
+    fee: Number(t.fee),
+    fundingFee: t.fundingFee === null ? null : Number(t.fundingFee),
   }));
 
   // 在伺服器端(固定 UTC 時區)格式化成字串再傳給 client component,

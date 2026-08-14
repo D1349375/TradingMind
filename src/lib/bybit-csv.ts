@@ -18,6 +18,7 @@ export type CsvRow = {
   entryPrice: number;
   exitPrice: number;
   fee: number; // 開倉+平倉手續費,不含資金費率(跟 API 同步的 fee 語意一致)
+  fundingFee: number; // CSV 本身就有這欄,直接留著,不像 API 同步那樣要用損益反推
   realizedPnl: number;
   closedAt: Date;
 };
@@ -157,6 +158,7 @@ export function parseBybitCsv(text: string, utcOffsetMinutes: number): CsvParseR
         entryPrice,
         exitPrice,
         fee: openFee + closeFee,
+        fundingFee,
         realizedPnl,
         closedAt,
       });

@@ -10,6 +10,11 @@ export type TradePoint = {
   rMultiple: number | null;
   positionSize?: number | null;
   leverage?: number | null;
+  direction?: "LONG" | "SHORT";
+  entryPrice?: number | null;
+  exitPrice?: number | null;
+  fee?: number | null;
+  fundingFee?: number | null; // 只有 CSV 匯入的交易才有,見 lib/funding-cost.ts
 };
 
 export type Summary = {

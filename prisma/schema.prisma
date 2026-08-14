@@ -109,6 +109,12 @@ model Trade {
   positionSize Decimal
   leverage     Decimal?
   fee          Decimal     @default(0)
+  // 資金費率(2026-08-15新增)。只有 CSV 匯入有這個欄位(Bybit CSV 匯出本身
+  // 就有「Funding Fee」欄,之前解析出來但被丟棄,現在留著);Bybit API 同步
+  // 的 closed-pnl 沒有獨立回傳資金費率(推測是內含在 closedPnl 裡但沒拆開),
+  // 這種情況留 null,分析時改用 lib/funding-cost.ts 從損益反推「推估值」,
+  // 兩種來源在 UI 上要分開標示,不能混為一談當作同等精確度的數字。
+  fundingFee   Decimal?
   realizedPnl  Decimal?
   source       TradeSource @default(MANUAL)
   bybitOrderId String?     @unique // 防止同步時重複建檔

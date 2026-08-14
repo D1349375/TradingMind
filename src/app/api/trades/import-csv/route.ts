@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
         exitPrice: row.exitPrice,
         positionSize: row.positionSize,
         fee: row.fee,
+        fundingFee: row.fundingFee,
         realizedPnl: row.realizedPnl,
         closedAt: row.closedAt,
         source: "CSV_IMPORT",

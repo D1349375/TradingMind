@@ -16,6 +16,7 @@ import {
   type HistogramBucket,
   type PerfBucket,
 } from "@/lib/stats";
+import { summarizeFundingCost } from "@/lib/funding-cost";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 function fmt(n: number, d = 2) {
@@ -55,6 +56,36 @@ export function PerformanceView({
   const hourly = useMemo(() => (mounted ? hourOfDayBreakdown(trades) : []), [mounted, trades]);
   const sizeBuckets = useMemo(() => performanceByPositionSize(trades), [trades]);
   const leverageBuckets = useMemo(() => performanceByLeverage(trades), [trades]);
+  const funding = useMemo(
+    () =>
+      summarizeFundingCost(
+        trades
+          .filter(
+            (
+              t,
+            ): t is typeof t & {
+              direction: "LONG" | "SHORT";
+              entryPrice: number;
+              positionSize: number;
+            } =>
+              t.direction !== undefined &&
+              t.entryPrice !== undefined &&
+              t.entryPrice !== null &&
+              t.positionSize !== undefined &&
+              t.positionSize !== null,
+          )
+          .map((t) => ({
+            direction: t.direction,
+            entryPrice: t.entryPrice,
+            exitPrice: t.exitPrice ?? null,
+            positionSize: t.positionSize,
+            fee: t.fee ?? null,
+            fundingFee: t.fundingFee ?? null,
+            realizedPnl: t.realizedPnl,
+          })),
+      ),
+    [trades],
+  );
 
   return (
     <div className="space-y-4">
@@ -110,6 +141,13 @@ export function PerformanceView({
         help="把贏的交易和輸的交易分開,比較平均部位大小/槓桿/R 值——用來找「是不是部位一放大就開始輸」這類系統性差異,不是單純的勝率統計。"
       >
         <WinLossComparisonCard result={wl} />
+      </Card>
+
+      <Card
+        title="資金費率拖累分析"
+        help="永續合約每 8 小時結算一次資金費率,是加密貨幣特有的成本項。CSV 匯入的交易有 Bybit 原始的資金費率數字(精確值);Bybit API 同步的交易沒有單獨回傳這個欄位,改用「預期損益(不含資金費率)減去實際損益」反推(推估值,可能有微小誤差,不是官方數字)。手動新增的交易沒有這項資料,不計入。"
+      >
+        <FundingCostCard result={funding} />
       </Card>
 
       <div className="grid grid-cols-2 gap-4">
@@ -263,6 +301,43 @@ function WinLossComparisonCard({ result }: { result: ReturnType<typeof winLossCo
         ))}
       </tbody>
     </table>
+  );
+}
+
+function FundingCostCard({ result }: { result: ReturnType<typeof summarizeFundingCost> }) {
+  if (!result.available) {
+    return (
+      <div className="rounded border border-dashed border-border bg-canvas px-3.5 py-3.5">
+        <p className="text-[0.8rem] leading-relaxed text-text-secondary">
+          {result.unavailableReason}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-[0.72rem] text-text-secondary">總資金費率成本</div>
+          <div
+            className={`num text-[1.1rem] font-semibold ${result.totalCost > 0 ? "text-loss" : "text-profit"}`}
+          >
+            {result.totalCost > 0 ? "-" : "+"}
+            {fmt(Math.abs(result.totalCost))}U
+          </div>
+        </div>
+        <div>
+          <div className="text-[0.72rem] text-text-secondary">佔總獲利比例</div>
+          <div className="num text-[1.1rem] font-semibold">
+            {result.pctOfGrossProfit === null ? "—" : `${fmt(result.pctOfGrossProfit, 1)}%`}
+          </div>
+        </div>
+      </div>
+      <p className="mt-2.5 text-[0.72rem] leading-relaxed text-text-tertiary">
+        {result.explicitCount} 筆精確值(CSV)、{result.estimatedCount} 筆推估值(API 同步)
+        {result.unavailableCount > 0 && `、${result.unavailableCount} 筆缺資料未計入`}。
+      </p>
+    </div>
   );
 }
 
