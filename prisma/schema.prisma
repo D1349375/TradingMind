@@ -113,11 +113,12 @@ model Trade {
   bybitOrderId String?     @unique // 防止同步時重複建檔
 
   // ---- 可選欄位中,結構化的先抽成真欄位;其餘走 CustomFieldValue EAV ----
-  rMultiple           Decimal?
-  grade               String? // A/B/C/D 或 1-10,存字串以兼容兩種制度
-  screenshotBeforeUrl String?
-  screenshotAfterUrl  String?
-  reflectionNote      String? // 富文本,先存 markdown/html 字串
+  rMultiple      Decimal?
+  grade          String? // A/B/C/D 或 1-10,存字串以兼容兩種制度
+  // 富文本(HTML,Tiptap 輸出)。2026-08-14 起圖片直接以 <img> 內嵌在這裡,
+  // 取代原本 screenshotBeforeUrl/screenshotAfterUrl 兩個固定版位欄位——
+  // 那兩個欄位從沒真的接過上傳功能,一直是 null,直接拿掉不用遷移舊資料。
+  reflectionNote String?
 
   customValues CustomFieldValue[]
   ruleChecks   TradeRuleCheck[]

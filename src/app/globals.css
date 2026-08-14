@@ -115,6 +115,38 @@ body {
   background: transparent;
 }
 
+/* ============ 記錄編輯器(Tiptap) ============
+   Tiptap 本身不帶樣式,標題/清單/圖片的呈現規則統一寫在這裡,
+   不要散落在元件裡用 inline style。 */
+.prose-note h2 {
+  margin: 0.9em 0 0.4em;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.prose-note h3 {
+  margin: 0.8em 0 0.35em;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+.prose-note p {
+  margin: 0.5em 0;
+}
+.prose-note ul {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+  list-style: disc;
+}
+.prose-note img {
+  display: block;
+  margin: 0.6em 0;
+}
+.prose-note > *:first-child {
+  margin-top: 0;
+}
+.prose-note:focus-within {
+  border-color: var(--accent);
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

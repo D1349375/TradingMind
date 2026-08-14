@@ -8,6 +8,7 @@ import {
 } from "@/components/trades/custom-fields";
 import { SetupPicker, type SetupOption } from "@/components/trades/setup-picker";
 import { AiAnalysis } from "@/components/trades/ai-analysis";
+import { RichNoteEditor } from "@/components/trades/rich-note-editor";
 
 // 對應 prototype/index.html 的 .trades-layout(左列表 / 右詳情)。
 
@@ -81,6 +82,59 @@ function useLocalTime() {
   return local;
 }
 
+// 拖曳調整寬度的共用邏輯,列表/詳情面板、雙欄對比的分隔線都用這個——
+// 跟側邊欄的拖曳把手是同一套模式,只是把 min/max/setter 參數化。
+function useDragResize(
+  width: number,
+  setWidth: (n: number) => void,
+  min: number,
+  max: number,
+) {
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  function onPointerDown(e: React.PointerEvent) {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidth: width };
+    setDragging(true);
+    function onMove(ev: PointerEvent) {
+      if (!dragRef.current) return;
+      const next = Math.max(
+        min,
+        Math.min(max, dragRef.current.startWidth + (ev.clientX - dragRef.current.startX)),
+      );
+      setWidth(next);
+    }
+    function onUp() {
+      setDragging(false);
+      dragRef.current = null;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    }
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }
+
+  return { onPointerDown, dragging };
+}
+
+function DragHandle({ onPointerDown, dragging }: { onPointerDown: (e: React.PointerEvent) => void; dragging: boolean }) {
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      role="separator"
+      aria-orientation="vertical"
+      className={`w-[5px] shrink-0 cursor-col-resize ${dragging ? "bg-accent/40" : "bg-transparent hover:bg-accent/25"}`}
+    />
+  );
+}
+
+const LIST_WIDTH_DEFAULT = 300;
+const LIST_WIDTH_MIN = 220;
+const LIST_WIDTH_MAX = 460;
+const LIST_COLLAPSE_THRESHOLD = 80;
+const PANE_MIN = 380;
+
 // 持倉時間需要開倉時間,而 Bybit closed-pnl 給不了(見 sync.ts 說明)。
 // 這裡回傳 null,由 UI 顯示「—」並附說明,不要編造數字。
 function holdingDuration(openedAt: string | null, closedAt: string | null) {
@@ -104,13 +158,34 @@ export function TradesView({
   rules: DisciplineRuleDef[];
 }) {
   const [selectedId, setSelectedId] = useState(trades[0]?.id ?? null);
-  const [listOpen, setListOpen] = useState(true);
+  const [compareId, setCompareId] = useState<string | null>(null);
+  const [listWidth, setListWidth] = useState(LIST_WIDTH_DEFAULT);
+  const [paneAWidth, setPaneAWidth] = useState(600);
   const [setups, setSetups] = useState(initialSetups);
   const [tradeSetup, setTradeSetup] = useState<Record<string, string | null>>(
     () => Object.fromEntries(trades.map((t) => [t.id, t.setupId])),
   );
   const selected = trades.find((t) => t.id === selectedId) ?? null;
+  const compared = compareId ? (trades.find((t) => t.id === compareId) ?? null) : null;
   const local = useLocalTime();
+
+  const listCollapsed = listWidth <= LIST_COLLAPSE_THRESHOLD;
+  const listDrag = useDragResize(
+    listWidth,
+    (w) => setListWidth(w < LIST_COLLAPSE_THRESHOLD ? 0 : w),
+    0,
+    LIST_WIDTH_MAX,
+  );
+  const paneDrag = useDragResize(paneAWidth, setPaneAWidth, PANE_MIN, 1400);
+
+  function selectPrimary(id: string) {
+    setSelectedId(id);
+    if (compareId === id) setCompareId(null);
+  }
+  function toggleCompare(id: string) {
+    if (id === selectedId) return;
+    setCompareId((cur) => (cur === id ? null : id));
+  }
 
   if (trades.length === 0) {
     return (
@@ -126,50 +201,79 @@ export function TradesView({
   }
 
   return (
-    <div
-      className={`grid h-[calc(100vh-168px)] overflow-hidden rounded border border-border ${
-        listOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[0_1fr]"
-      }`}
-    >
+    // 168px 是舊版頁首(含副標題行)量出來的高度;頁首縮短後(2026-08-14)
+    // 這個扣掉的值要跟著變小,不然面板高度沒吃到讓出來的空間。
+    <div className="flex h-[calc(100vh-100px)] overflow-hidden rounded border border-border">
       <div
-        className={`overflow-y-auto bg-canvas ${listOpen ? "border-r border-border" : "invisible"}`}
+        style={{ width: listWidth }}
+        className={`min-w-0 shrink-0 overflow-y-auto bg-canvas ${
+          listCollapsed ? "invisible" : "border-r border-border"
+        } ${listDrag.dragging ? "" : "transition-[width] duration-150"}`}
       >
         {trades.map((t) => {
           const pnl = Number(t.realizedPnl ?? 0);
           const win = pnl >= 0;
           const isSelected = t.id === selectedId;
+          const isCompared = t.id === compareId;
           return (
-            <button
+            <div
               key={t.id}
-              type="button"
-              onClick={() => setSelectedId(t.id)}
-              className={`w-full border-b border-border px-[14px] py-[10px] text-left ${
-                isSelected ? "bg-accent-soft" : "hover:bg-surface"
+              className={`group relative border-b border-border ${
+                isSelected ? "bg-accent-soft" : isCompared ? "bg-surface" : "hover:bg-surface"
               }`}
-              aria-current={isSelected}
             >
-              <div className="mb-[3px] flex justify-between text-[0.87rem]">
-                <span className="font-semibold">{t.symbol}</span>
-                <span
-                  className={`num font-semibold ${win ? "text-profit" : "text-loss"}`}
-                >
-                  {win ? "+" : ""}
-                  {fmtNum(t.realizedPnl)}U
-                </span>
-              </div>
-              <div
-                className="text-[0.78rem] text-text-secondary"
-                suppressHydrationWarning
+              <button
+                type="button"
+                onClick={() => selectPrimary(t.id)}
+                className="w-full px-[14px] py-[10px] text-left"
+                aria-current={isSelected}
               >
-                {fmtShortDate(t.closedAt, local)} · {t.direction} ·{" "}
-                {t.rMultiple ? `${fmtNum(t.rMultiple)}R` : "—"}
-              </div>
-            </button>
+                <div className="mb-[3px] flex justify-between text-[0.87rem]">
+                  <span className="font-semibold">
+                    {isSelected && (
+                      <span className="mr-1.5 rounded-[3px] bg-accent px-1 py-[1px] text-[0.62rem] font-bold text-white">A</span>
+                    )}
+                    {isCompared && (
+                      <span className="mr-1.5 rounded-[3px] border border-accent px-1 py-[1px] text-[0.62rem] font-bold text-accent">B</span>
+                    )}
+                    {t.symbol}
+                  </span>
+                  <span className={`num font-semibold ${win ? "text-profit" : "text-loss"}`}>
+                    {win ? "+" : ""}
+                    {fmtNum(t.realizedPnl)}U
+                  </span>
+                </div>
+                <div className="text-[0.78rem] text-text-secondary" suppressHydrationWarning>
+                  {fmtShortDate(t.closedAt, local)} · {t.direction} ·{" "}
+                  {t.rMultiple ? `${fmtNum(t.rMultiple)}R` : "—"}
+                </div>
+              </button>
+              {!isSelected && (
+                <button
+                  type="button"
+                  onClick={() => toggleCompare(t.id)}
+                  title={isCompared ? "取消比較" : "在右側比較"}
+                  aria-label={isCompared ? "取消比較" : "在右側比較"}
+                  className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded border text-[0.65rem] font-bold ${
+                    isCompared
+                      ? "border-accent bg-accent text-white"
+                      : "border-border bg-canvas text-text-tertiary opacity-0 hover:border-accent hover:text-accent group-hover:opacity-100"
+                  }`}
+                >
+                  B
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
 
-      <div className="overflow-y-auto bg-surface px-11 py-8">
+      <DragHandle onPointerDown={listDrag.onPointerDown} dragging={listDrag.dragging} />
+
+      <div
+        style={compared ? { width: paneAWidth } : undefined}
+        className={`${compared ? "shrink-0" : "flex-1"} min-w-0 overflow-y-auto bg-surface px-11 py-8`}
+      >
         {selected && (
           <TradeDetail
             key={selected.id}
@@ -182,22 +286,46 @@ export function TradesView({
             onSetupAssign={(setupId) =>
               setTradeSetup((prev) => ({ ...prev, [selected.id]: setupId }))
             }
-            listOpen={listOpen}
-            onToggleList={() => setListOpen((v) => !v)}
+            listCollapsed={listCollapsed}
+            onToggleList={() => setListWidth(listCollapsed ? LIST_WIDTH_DEFAULT : 0)}
           />
         )}
       </div>
+
+      {compared && (
+        <>
+          <DragHandle onPointerDown={paneDrag.onPointerDown} dragging={paneDrag.dragging} />
+          <div className="min-w-0 flex-1 overflow-y-auto border-l border-border bg-surface px-11 py-8">
+            <TradeDetail
+              key={compared.id}
+              trade={compared}
+              fields={fields}
+              rules={rules}
+              setups={setups}
+              setupId={tradeSetup[compared.id] ?? null}
+              onSetupCreated={(s) => setSetups((prev) => [...prev, s])}
+              onSetupAssign={(setupId) =>
+                setTradeSetup((prev) => ({ ...prev, [compared.id]: setupId }))
+              }
+              listCollapsed={listCollapsed}
+              onToggleList={() => setListWidth(listCollapsed ? LIST_WIDTH_DEFAULT : 0)}
+              onClose={() => setCompareId(null)}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 const DETAIL_TABS = [
   { key: "overview", label: "總覽" },
-  // 自訂欄位獨立一個分頁:Field Builder 完成後這裡會有情緒/時段/Setup/
-  // 週期/紀律/標籤等十幾個欄位,塞在總覽會把它擠爆
-  { key: "fields", label: "自訂欄位" },
-  { key: "note", label: "反思筆記" },
-  { key: "shots", label: "截圖" },
+  // 反思筆記跟截圖原本分開兩個分頁,改成 Notion/Word 式圖文合一的
+  // 「記錄」分頁(2026-08-14)——圖片直接插在筆記裡,不再是固定的
+  // 「入場前/平倉後」兩格版位。自訂欄位也併進來當左欄(2026-08-14):
+  // 自訂欄位單獨一頁常常只有小貓兩三隻、右邊空一大片,不如跟記錄合併,
+  // 改用下拉選單壓縮高度。
+  { key: "note", label: "記錄" },
   { key: "ai", label: "AI 分析" },
 ] as const;
 type DetailTab = (typeof DETAIL_TABS)[number]["key"];
@@ -210,8 +338,9 @@ function TradeDetail({
   setupId,
   onSetupCreated,
   onSetupAssign,
-  listOpen,
+  listCollapsed,
   onToggleList,
+  onClose,
 }: {
   trade: TradeDto;
   fields: FieldDef[];
@@ -220,8 +349,9 @@ function TradeDetail({
   setupId: string | null;
   onSetupCreated: (setup: SetupOption) => void;
   onSetupAssign: (setupId: string | null) => void;
-  listOpen: boolean;
+  listCollapsed: boolean;
   onToggleList: () => void;
+  onClose?: () => void;
 }) {
   const [tab, setTab] = useState<DetailTab>("overview");
   const local = useLocalTime();
@@ -229,7 +359,6 @@ function TradeDetail({
   const [grade, setGrade] = useState(trade.grade ?? "");
   const [ruleChecks, setRuleChecks] = useState(trade.ruleChecks);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function save(payload: Record<string, unknown>) {
     setSaveState("saving");
@@ -245,34 +374,22 @@ function TradeDetail({
     }
   }
 
-  // 反思筆記自動儲存(停止輸入 800ms 後)。
-  // 用「和已儲存的值比對」判斷要不要送出,而不是用 first-render 旗標——
-  // StrictMode 在開發模式會重跑 effect,旗標會被第一次執行吃掉,
-  // 導致每次切換交易都白送一次 PATCH。
-  useEffect(() => {
-    if (note === (trade.reflectionNote ?? "")) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => save({ reflectionNote: note }), 800);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note, trade.reflectionNote]);
-
   const pnl = Number(trade.realizedPnl ?? 0);
   const win = pnl >= 0;
   const duration = holdingDuration(trade.openedAt, trade.closedAt);
 
   return (
-    // 收起列表時放寬到 860px,展開時維持 640px 的舒適閱讀寬度
-    <div className={listOpen ? "max-w-[640px]" : "max-w-[860px]"}>
+    // 面板本身可拖曳調整寬度(見 TradesView)。上限拉高到 1400px 只是防止
+    // 收起列表後在超寬螢幕上文字行寬離譜地長,平常應該用不到這個天花板——
+    // 2026-08-14 從 980px 調高,980 在收起列表後還是浪費掉不少可用寬度。
+    <div className="max-w-[1400px]">
       <div className="mb-1 flex items-center gap-2">
         <button
           type="button"
           onClick={onToggleList}
-          title={listOpen ? "收起交易列表" : "展開交易列表"}
-          aria-label={listOpen ? "收起交易列表" : "展開交易列表"}
-          aria-expanded={listOpen}
+          title={listCollapsed ? "展開交易列表" : "收起交易列表"}
+          aria-label={listCollapsed ? "展開交易列表" : "收起交易列表"}
+          aria-expanded={!listCollapsed}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border text-text-secondary hover:border-accent hover:text-accent"
         >
           <svg
@@ -286,7 +403,7 @@ function TradeDetail({
           >
             <rect x="3" y="4" width="14" height="12" rx="1.5" />
             <line x1="8" y1="4" x2="8" y2="16" />
-            {!listOpen && <path d="M11 8l2 2-2 2" />}
+            {listCollapsed && <path d="M11 8l2 2-2 2" />}
           </svg>
         </button>
         <h2 className="text-[1.48rem] font-semibold">
@@ -301,6 +418,20 @@ function TradeDetail({
           }}
           onCreated={onSetupCreated}
         />
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            title="關閉比較"
+            aria-label="關閉比較"
+            className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border text-text-secondary hover:border-loss hover:text-loss"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-3.5 w-3.5">
+              <line x1="5" y1="5" x2="15" y2="15" />
+              <line x1="15" y1="5" x2="5" y2="15" />
+            </svg>
+          </button>
+        )}
       </div>
       <div
         className="mb-4 text-[0.87rem] text-text-secondary"
@@ -480,36 +611,6 @@ function TradeDetail({
         )}
       </section>
 
-      <section className={tab === "fields" ? "mb-6" : "hidden"}>
-        <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
-          自訂欄位
-        </h3>
-        <CustomFields
-          fields={fields}
-          initialValues={trade.customValues}
-          onSave={(patch) => save({ customValues: patch })}
-        />
-      </section>
-
-      <section className={tab === "shots" ? "mb-6" : "hidden"}>
-        <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
-          截圖
-        </h3>
-        <div className="flex gap-3">
-          {["入場前 K 線", "平倉後結果"].map((label) => (
-            <div
-              key={label}
-              className="flex aspect-[16/10] flex-1 items-center justify-center rounded border border-dashed border-border bg-canvas text-[0.8rem] text-text-secondary"
-            >
-              {label}
-            </div>
-          ))}
-        </div>
-        <p className="mt-1.5 text-[0.75rem] text-text-tertiary">
-          圖片上傳需要接 Supabase Storage,尚未實作。
-        </p>
-      </section>
-
       <section className={tab === "ai" ? "mb-6" : "hidden"}>
         <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
           單一人格交易分析
@@ -517,17 +618,32 @@ function TradeDetail({
         <AiAnalysis tradeId={trade.id} />
       </section>
 
-      <section className={tab === "note" ? "" : "hidden"}>
-        <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
-          反思筆記
-        </h3>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="這筆交易的進場理由、執行狀況、事後檢討…"
-          rows={7}
-          className="w-full resize-y rounded border border-border bg-canvas px-3.5 py-3 text-[1.03rem] leading-[1.75] text-text outline-none placeholder:text-text-tertiary focus:border-accent"
-        />
+      {/* 記錄:左欄自訂欄位(下拉選單,壓縮高度)+ 右欄圖文編輯器,
+          2026-08-14 合併自「自訂欄位」+「反思筆記/截圖」三個原本分開的分頁。 */}
+      <section className={tab === "note" ? "flex gap-6" : "hidden"}>
+        <div className="w-[240px] shrink-0">
+          <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
+            自訂欄位
+          </h3>
+          <CustomFields
+            fields={fields}
+            initialValues={trade.customValues}
+            onSave={(patch) => save({ customValues: patch })}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="mb-2.5 text-[0.78rem] font-semibold tracking-[0.05em] text-text-secondary">
+            記錄
+          </h3>
+          <RichNoteEditor
+            tradeId={trade.id}
+            initialContent={trade.reflectionNote ?? ""}
+            onSave={(html) => {
+              setNote(html);
+              save({ reflectionNote: html });
+            }}
+          />
+        </div>
       </section>
     </div>
   );

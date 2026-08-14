@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TradesView, type TradeDto } from "@/components/trades/trades-view";
 import { AddTradeForm } from "@/components/trades/add-trade-form";
+import { ImportCsvForm } from "@/components/trades/import-csv-form";
 
 export const metadata: Metadata = {
   title: "交易記錄 · TradeMind",
@@ -71,29 +72,33 @@ export default async function TradesPage() {
   }));
 
   return (
-    <div className="px-9 py-8">
-      <div className="mx-auto max-w-[1180px]">
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-[1.4rem] font-semibold">交易記錄</h1>
-            <p className="mt-0.5 text-[0.84rem] text-text-secondary">
-              自動同步 + 手動補充欄位 · 共 {trades.length} 筆
-            </p>
-          </div>
+    // 這頁刻意不套 max-w-[1180px] 那個跟其他頁面共用的置中容器——交易記錄頁
+    // 的重點是可拖曳的列表/詳情面板,面板自己管寬度,外層再限制寬度只會讓
+    // 使用者拖了也白拖(2026-08-14,回應「紀錄介面太小」的問題)。
+    <div className="px-9 py-6">
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h1 className="flex items-baseline gap-2 text-[1.25rem] font-semibold">
+          交易記錄
+          <span className="text-[0.8rem] font-normal text-text-secondary">
+            共 {trades.length} 筆
+          </span>
+        </h1>
+        <div className="flex items-center gap-2">
+          <ImportCsvForm />
           <AddTradeForm />
         </div>
-        <TradesView
-          trades={trades}
-          fields={fields}
-          setups={setups.map((s) => ({
-            id: s.id,
-            name: s.name,
-            entryLogic: s.entryLogic,
-            economicRationale: s.economicRationale,
-          }))}
-          rules={rules.map((r) => ({ id: r.id, label: r.label }))}
-        />
       </div>
+      <TradesView
+        trades={trades}
+        fields={fields}
+        setups={setups.map((s) => ({
+          id: s.id,
+          name: s.name,
+          entryLogic: s.entryLogic,
+          economicRationale: s.economicRationale,
+        }))}
+        rules={rules.map((r) => ({ id: r.id, label: r.label }))}
+      />
     </div>
   );
 }
