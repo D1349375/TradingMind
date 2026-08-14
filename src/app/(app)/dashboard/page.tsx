@@ -44,18 +44,16 @@ export default async function DashboardPage() {
     rMultiple: t.rMultiple === null ? null : Number(t.rMultiple),
   }));
 
+  // 在伺服器端(固定 UTC 時區)格式化成字串再傳給 client component,
+  // 避免把 Date 物件丟進去在瀏覽器端重新格式化導致 hydration 不一致。
+  const lastSyncedText = conn?.lastSyncedAt
+    ? `上次同步:${conn.lastSyncedAt.toLocaleString("zh-TW", { timeZone: "UTC" })} (UTC)`
+    : "尚未同步";
+
   return (
     <div className="px-9 py-8">
       <div className="mx-auto max-w-[1180px]">
-        <div className="mb-5">
-          <h1 className="text-[1.4rem] font-semibold">Dashboard</h1>
-          <p className="mt-0.5 text-[0.84rem] text-text-secondary">
-            {conn?.lastSyncedAt
-              ? `上次同步:${conn.lastSyncedAt.toLocaleString("zh-TW", { timeZone: "UTC" })} (UTC)`
-              : "尚未同步"}
-          </p>
-        </div>
-        <DashboardView trades={trades} goals={goals} />
+        <DashboardView trades={trades} goals={goals} lastSyncedText={lastSyncedText} />
       </div>
     </div>
   );

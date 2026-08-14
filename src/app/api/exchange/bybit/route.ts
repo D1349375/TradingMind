@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { decrypt, encrypt, maskApiKey } from "@/lib/crypto";
 import { validateReadOnlyKey } from "@/lib/bybit";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // 連線狀態。回傳內容刻意只有遮罩後的 key,secret 永遠不出後端。
 export async function GET() {
@@ -28,6 +29,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
+
+  // 每次都會真的打一次 Bybit API 驗證金鑰,擋掉短時間內反覆嘗試
+  // (誤觸發或亂猜金鑰)把我們的伺服器 IP 耗用在 Bybit 那邊的額度燒光。
+  const rl = await checkRateLimit("bybit-connect", user.id, { limit: 10, windowSeconds: 600 });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterSeconds);
 
   let body: { apiKey?: unknown; apiSecret?: unknown };
   try {

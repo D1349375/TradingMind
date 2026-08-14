@@ -10,6 +10,12 @@ import {
 } from "@/lib/stats";
 import { GoalCards, type GoalState } from "@/components/dashboard/goal-cards";
 import { PerformanceView } from "@/components/dashboard/performance-view";
+import {
+  DateRangeSelect,
+  DEFAULT_DATE_RANGE,
+  resolveDateRange,
+  type DateRangeValue,
+} from "@/components/dashboard/date-range-select";
 
 function fmt(n: number, digits = 2) {
   return n.toLocaleString("en-US", {
@@ -31,13 +37,29 @@ type DashTab = (typeof DASH_TABS)[number]["key"];
 export function DashboardView({
   trades,
   goals,
+  lastSyncedText,
 }: {
   trades: NamedTradePoint[];
   goals: GoalState;
+  lastSyncedText: string;
 }) {
   const [tab, setTab] = useState<DashTab>("overview");
-  const summary = useMemo(() => summarise(trades), [trades]);
-  const curve = useMemo(() => equityCurve(trades), [trades]);
+  const [range, setRange] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
+
+  // 區間篩選只影響「回顧型」統計(總覽數據格/損益曲線/績效分析頁)。
+  // 回撤緩衝、獲利目標、日曆卡刻意不受此篩選影響——見下方對應區塊註解。
+  const filteredTrades = useMemo(() => {
+    const r = resolveDateRange(range);
+    if (!r) return trades;
+    return trades.filter((t) => {
+      if (!t.closedAt) return false;
+      const d = new Date(t.closedAt);
+      return d >= r.start && d <= r.end;
+    });
+  }, [trades, range]);
+
+  const summary = useMemo(() => summarise(filteredTrades), [filteredTrades]);
+  const curve = useMemo(() => equityCurve(filteredTrades), [filteredTrades]);
 
   // 今日/本月都是「使用者本地時區」的概念,必須在瀏覽器端算,
   // 否則跨午夜的交易會被歸到錯誤的一天(跟日曆分組同一個理由)。
@@ -63,21 +85,37 @@ export function DashboardView({
     return { todayLoss: todayPnl < 0 ? -todayPnl : 0, monthPnl: month };
   }, [trades]);
 
-  if (trades.length === 0) {
-    return (
-      <div className="rounded border border-border bg-surface px-5 py-12 text-center">
-        <div className="mb-1 text-[0.9rem] font-semibold text-text-secondary">
-          還沒有交易資料
-        </div>
-        <p className="text-[0.82rem] text-text-secondary">
-          到「設定 → 交易所連線」連接 Bybit 後按「立即同步」。
+  const header = (
+    <div className="mb-5 flex items-start justify-between gap-4">
+      <div>
+        <h1 className="text-[1.4rem] font-semibold">Dashboard</h1>
+        <p className="mt-0.5 text-[0.84rem] text-text-secondary">
+          {lastSyncedText}
         </p>
       </div>
+      <DateRangeSelect value={range} onChange={setRange} />
+    </div>
+  );
+
+  if (trades.length === 0) {
+    return (
+      <>
+        {header}
+        <div className="rounded border border-border bg-surface px-5 py-12 text-center">
+          <div className="mb-1 text-[0.9rem] font-semibold text-text-secondary">
+            還沒有交易資料
+          </div>
+          <p className="text-[0.82rem] text-text-secondary">
+            到「設定 → 交易所連線」連接 Bybit 後按「立即同步」。
+          </p>
+        </div>
+      </>
     );
   }
 
   return (
     <>
+      {header}
       <div className="mb-5 flex items-center gap-5 border-b border-border">
         {DASH_TABS.map((t) => (
           <button
@@ -99,6 +137,12 @@ export function DashboardView({
       {tab === "overview" ? (
         <>
           <StatGrid summary={summary} />
+          {filteredTrades.length === 0 && (
+            <div className="mb-5 rounded border border-dashed border-border bg-canvas px-4 py-3 text-[0.82rem] text-text-secondary">
+              選取的區間內沒有交易資料。
+            </div>
+          )}
+          {/* 回撤緩衝/獲利目標是即時風控狀態,固定看「今日/本月」,不隨上方區間篩選變動 */}
           <div suppressHydrationWarning>
             {mounted && (
               <GoalCards goals={goals} todayLoss={todayLoss} monthPnl={monthPnl} />
@@ -108,10 +152,11 @@ export function DashboardView({
             <EquityChart curve={curve} />
             <WinLossCard summary={summary} />
           </div>
+          {/* 日曆卡有自己的月份導覽,同樣不受上方區間篩選影響 */}
           <CalendarCard trades={trades} />
         </>
       ) : (
-        <PerformanceView trades={trades} totalCapital={goals.totalCapital} />
+        <PerformanceView trades={filteredTrades} totalCapital={goals.totalCapital} />
       )}
     </>
   );

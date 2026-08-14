@@ -7,6 +7,7 @@ import {
   TraderDebateNotConfiguredError,
   type TradeDataForAnalysis,
 } from "@/lib/trader-debate";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // 純文字單一人格分析,規劃書 11.2 節定價
 const CREDIT_COST = 5;
@@ -27,6 +28,11 @@ export async function POST(
 ) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
+
+  // 每次呼叫都是真的 LLM API 費用,Credit 餘額本來就會擋住長期濫用,
+  // 但這裡多擋一層短時間爆量(例如程式錯誤造成的迴圈連續呼叫)。
+  const rl = await checkRateLimit("analyze", user.id, { limit: 10, windowSeconds: 3600 });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterSeconds);
 
   let body: { persona?: unknown };
   try {

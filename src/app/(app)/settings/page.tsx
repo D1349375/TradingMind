@@ -6,12 +6,15 @@ import { FieldBuilder } from "@/components/settings/field-builder";
 import { DisciplineRules } from "@/components/settings/discipline-rules";
 import { BehaviorDetection } from "@/components/settings/behavior-detection";
 import { NotificationSettings } from "@/components/settings/notification-settings";
+import { AccountDangerZone } from "@/components/settings/account-danger-zone";
+import { CreditTopup } from "@/components/settings/credit-topup";
+import { getCurrentUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "設定 · TradeMind",
 };
 
-// 分頁對應 prototype/index.html 的設定頁六分頁。
+// 分頁對應 prototype/index.html 的設定頁六分頁,「帳戶」「儲值」是後來加的。
 const TABS = [
   { key: "exchange", label: "交易所連線" },
   { key: "fields", label: "欄位自訂" },
@@ -19,6 +22,8 @@ const TABS = [
   { key: "detection", label: "行為偵測" },
   { key: "notify", label: "通知設定" },
   { key: "goals", label: "目標設定" },
+  { key: "billing", label: "儲值" },
+  { key: "account", label: "帳戶" },
 ] as const;
 
 export default async function SettingsPage({
@@ -29,6 +34,7 @@ export default async function SettingsPage({
   // 登入檢查在 (app)/layout.tsx 統一處理
   const active =
     TABS.find((t) => t.key === searchParams.tab)?.key ?? "exchange";
+  const user = await getCurrentUser();
 
   return (
     <div className="px-9 py-8">
@@ -77,6 +83,10 @@ export default async function SettingsPage({
             <DisciplineRules />
           ) : active === "detection" ? (
             <BehaviorDetection />
+          ) : active === "billing" ? (
+            <CreditTopup />
+          ) : active === "account" ? (
+            <AccountDangerZone email={user!.email} />
           ) : (
             <NotificationSettings />
           )}

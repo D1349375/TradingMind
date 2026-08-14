@@ -35,6 +35,7 @@ model User {
   goal              Goal?
   creditBalance     CreditBalance?
   creditTxns        CreditTransaction[]
+  creditPurchases   CreditPurchase[]
   bybitConnection   BybitConnection?
 }
 
@@ -282,4 +283,37 @@ model CreditTransaction {
   amount    Int // 正=獲得,負=消耗
   reason    String // 例如 "single_persona_analysis" "monthly_grant"
   createdAt DateTime @default(now())
+}
+
+// Credit 儲值訂單(綠界 ECPay)。merchantTradeNo 是我方產生的訂單編號,
+// 綠界的 ReturnURL callback 靠這個核對是哪一筆訂單——不能直接信任 callback
+// 帶來的金額/Credit 數量,一律用當初建單時存的 creditAmount/priceTwd 為準,
+// 避免竄改請求偽造大額加值。
+model CreditPurchase {
+  id              String               @id @default(uuid())
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchantTradeNo String               @unique
+  creditAmount    Int
+  priceTwd        Int
+  status          CreditPurchaseStatus @default(PENDING)
+  ecpayTradeNo    String?
+  paymentType     String? // 綠界回傳的實際付款方式,例如 Credit_CreditCard / ATM
+  createdAt       DateTime             @default(now())
+  paidAt          DateTime?
+}
+
+enum CreditPurchaseStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// API 端點防濫用用的固定窗口計數器(`${userId}:${route}:${windowStart}`)。
+// 不特別建 FK 關聯 User——過期後單純是垃圾字串行,靠 expiresAt 讓
+// lib/rate-limit.ts 隨機順手清,不需要另外排 cron job。
+model RateLimitBucket {
+  key       String   @id
+  count     Int      @default(1)
+  expiresAt DateTime
 }
