@@ -32,6 +32,19 @@ function fmt(n: number, d = 2) {
 }
 const signed = (n: number, d = 2) => `${n >= 0 ? "+" : ""}${fmt(n, d)}`;
 
+function statsOf(list: AnalysisTrade[]): Omit<Row, "key"> {
+  const pnls = list.map((t) => t.realizedPnl).filter((p): p is number => p !== null);
+  const wins = pnls.filter((p) => p > 0).length;
+  const losses = pnls.filter((p) => p < 0).length;
+  const rs = list.map((t) => t.rMultiple).filter((r): r is number => r !== null);
+  return {
+    n: list.length,
+    winRate: wins + losses > 0 ? (wins / (wins + losses)) * 100 : null,
+    avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
+    pnl: pnls.reduce((s, p) => s + p, 0),
+  };
+}
+
 function aggregate(
   trades: AnalysisTrade[],
   keyOf: (t: AnalysisTrade) => string | null,
@@ -45,24 +58,47 @@ function aggregate(
     groups.set(k, arr);
   }
   return [...groups.entries()]
-    .map(([key, list]) => {
-      const pnls = list
-        .map((t) => t.realizedPnl)
-        .filter((p): p is number => p !== null);
-      const wins = pnls.filter((p) => p > 0).length;
-      const losses = pnls.filter((p) => p < 0).length;
-      const rs = list
-        .map((t) => t.rMultiple)
-        .filter((r): r is number => r !== null);
-      return {
-        key,
-        n: list.length,
-        winRate: wins + losses > 0 ? (wins / (wins + losses)) * 100 : null,
-        avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
-        pnl: pnls.reduce((s, p) => s + p, 0),
-      };
-    })
+    .map(([key, list]) => ({ key, ...statsOf(list) }))
     .sort((a, b) => b.pnl - a.pnl);
+}
+
+// 二維交叉分析:依兩個維度分組,找「單一維度看不出來、兩個維度交叉才浮現」的
+// 隱藏模式(例如「錯誤類型 × 星期幾」)。列/欄依樣本數由多到少排序——資料
+// 越多的組合放前面,越可靠的格子先看到。
+function aggregate2D(
+  trades: AnalysisTrade[],
+  keyOf1: (t: AnalysisTrade) => string | null,
+  keyOf2: (t: AnalysisTrade) => string | null,
+) {
+  const byRow = new Map<string, Map<string, AnalysisTrade[]>>();
+  const rowTotal = new Map<string, number>();
+  const colTotal = new Map<string, number>();
+
+  for (const t of trades) {
+    const r = keyOf1(t);
+    const c = keyOf2(t);
+    if (r === null || c === null) continue;
+    let cols = byRow.get(r);
+    if (!cols) {
+      cols = new Map();
+      byRow.set(r, cols);
+    }
+    const arr = cols.get(c) ?? [];
+    arr.push(t);
+    cols.set(c, arr);
+    rowTotal.set(r, (rowTotal.get(r) ?? 0) + 1);
+    colTotal.set(c, (colTotal.get(c) ?? 0) + 1);
+  }
+
+  const rowKeys = [...rowTotal.keys()].sort((a, b) => (rowTotal.get(b)! - rowTotal.get(a)!));
+  const colKeys = [...colTotal.keys()].sort((a, b) => (colTotal.get(b)! - colTotal.get(a)!));
+
+  function cellOf(r: string, c: string): (Omit<Row, "key">) | null {
+    const list = byRow.get(r)?.get(c);
+    return list ? statsOf(list) : null;
+  }
+
+  return { rowKeys, colKeys, cellOf };
 }
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -129,11 +165,16 @@ export function SetupView({
   enabledFieldKeys: string[];
 }) {
   const [dim, setDim] = useState<string>("symbol");
+  const [crossDim1, setCrossDim1] = useState<string>("symbol");
+  const [crossDim2, setCrossDim2] = useState<string>("weekday");
+  const [crossMetric, setCrossMetric] = useState<"pnl" | "winRate" | "avgR" | "n">("pnl");
   const DIMENSIONS = useMemo(
     () => buildDimensions(new Set(enabledFieldKeys)),
     [enabledFieldKeys],
   );
   const active = DIMENSIONS.find((d) => d.key === dim) ?? DIMENSIONS[0];
+  const crossActive1 = DIMENSIONS.find((d) => d.key === crossDim1) ?? DIMENSIONS[0];
+  const crossActive2 = DIMENSIONS.find((d) => d.key === crossDim2) ?? DIMENSIONS[1] ?? DIMENSIONS[0];
 
   const setupRows = useMemo(
     () => aggregate(trades, (t) => t.setupName),
@@ -142,6 +183,13 @@ export function SetupView({
   const dimRows = useMemo(
     () => (active.keyOf ? aggregate(trades, active.keyOf) : []),
     [trades, active],
+  );
+  const crossMatrix = useMemo(
+    () =>
+      crossActive1.keyOf && crossActive2.keyOf
+        ? aggregate2D(trades, crossActive1.keyOf, crossActive2.keyOf)
+        : null,
+    [trades, crossActive1, crossActive2],
   );
 
   if (trades.length === 0) {
@@ -294,7 +342,179 @@ export function SetupView({
           </>
         )}
       </section>
+
+      <section className="mt-5 rounded border border-border bg-surface px-4 py-4">
+        <div className="mb-3 flex items-center gap-1.5">
+          <h2 className="text-[0.82rem] font-semibold text-text-secondary">
+            交叉分析
+          </h2>
+          <HelpTooltip>
+            同時用兩個維度分組,找單一維度看不出來、兩個交叉才浮現的模式(例如「商品 × 星期幾」)。格子樣本數通常比單維度表少很多,數字少的格子只能參考。
+          </HelpTooltip>
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-[0.8rem]">
+          <span className="text-text-secondary">列</span>
+          <DimensionSelect
+            dimensions={DIMENSIONS}
+            value={crossDim1}
+            onChange={setCrossDim1}
+          />
+          <span className="text-text-secondary">× 欄</span>
+          <DimensionSelect
+            dimensions={DIMENSIONS}
+            value={crossDim2}
+            onChange={setCrossDim2}
+          />
+          <span className="ml-2 text-text-secondary">顯示</span>
+          <div className="flex overflow-hidden rounded border border-border">
+            {(
+              [
+                { key: "pnl", label: "累計損益" },
+                { key: "winRate", label: "勝率" },
+                { key: "avgR", label: "平均R" },
+                { key: "n", label: "交易數" },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setCrossMetric(m.key)}
+                aria-pressed={crossMetric === m.key}
+                className={`px-2.5 py-1 text-[0.76rem] ${
+                  crossMetric === m.key
+                    ? "bg-accent-soft font-semibold text-accent"
+                    : "bg-canvas text-text-secondary hover:text-text"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {crossDim1 === crossDim2 ? (
+          <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center text-[0.82rem] text-text-secondary">
+            列跟欄選了同一個維度,交叉沒有意義,換一個看看。
+          </div>
+        ) : !crossActive1.available || !crossActive2.available ? (
+          <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center">
+            <div className="mb-1 text-[0.85rem] font-semibold text-text-secondary">
+              {!crossActive1.available ? crossActive1.label : crossActive2.label}目前無法分析
+            </div>
+            <p className="mx-auto max-w-[52ch] text-[0.8rem] leading-relaxed text-text-secondary">
+              {!crossActive1.available ? crossActive1.missing : crossActive2.missing}
+            </p>
+          </div>
+        ) : !crossMatrix || crossMatrix.rowKeys.length === 0 ? (
+          <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center text-[0.82rem] text-text-secondary">
+            這兩個維度目前沒有交集的資料。
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[0.85rem]">
+              <thead>
+                <tr>
+                  <th className="border-b border-border px-2.5 py-1.5 text-left text-[0.75rem] font-semibold text-text-secondary">
+                    {crossActive1.label} \ {crossActive2.label}
+                  </th>
+                  {crossMatrix.colKeys.map((c) => (
+                    <th
+                      key={c}
+                      className="border-b border-border px-2.5 py-1.5 text-right text-[0.75rem] font-semibold text-text-secondary"
+                    >
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {crossMatrix.rowKeys.map((r) => (
+                  <tr key={r}>
+                    <td className="whitespace-nowrap border-b border-border px-2.5 py-1.5 font-semibold">
+                      {r}
+                    </td>
+                    {crossMatrix.colKeys.map((c) => {
+                      const cell = crossMatrix.cellOf(r, c);
+                      return (
+                        <CrossCell key={c} cell={cell} metric={crossMetric} />
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </>
+  );
+}
+
+function DimensionSelect({
+  dimensions,
+  value,
+  onChange,
+}: {
+  dimensions: Dimension[];
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded border border-border bg-canvas px-2 py-1 text-[0.8rem] text-text outline-none focus:border-accent"
+    >
+      {dimensions.map((d) => (
+        <option key={d.key} value={d.key}>
+          {d.label}
+          {!d.available ? "(無資料)" : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function CrossCell({
+  cell,
+  metric,
+}: {
+  cell: Omit<Row, "key"> | null;
+  metric: "pnl" | "winRate" | "avgR" | "n";
+}) {
+  if (!cell) {
+    return (
+      <td className="num border-b border-border px-2.5 py-1.5 text-right text-text-tertiary">
+        —
+      </td>
+    );
+  }
+  const tier = sampleTier(cell.n);
+  const muted = tier !== "sufficient";
+
+  let text: string;
+  let tone: "profit" | "loss" | "neutral" = "neutral";
+  if (metric === "n") {
+    text = String(cell.n);
+  } else if (metric === "winRate") {
+    text = cell.winRate === null ? "—" : `${fmt(cell.winRate, 0)}%`;
+  } else if (metric === "avgR") {
+    text = cell.avgR === null ? "—" : `${fmt(cell.avgR)}R`;
+  } else {
+    text = `${signed(cell.pnl, 0)}U`;
+    tone = cell.pnl >= 0 ? "profit" : "loss";
+  }
+
+  return (
+    <td
+      className={`num border-b border-border px-2.5 py-1.5 text-right ${
+        tone === "profit" ? "text-profit" : tone === "loss" ? "text-loss" : ""
+      } ${muted ? "opacity-50" : ""}`}
+      title={`${cell.n} 筆${muted ? "(樣本較少)" : ""}`}
+    >
+      {text}
+    </td>
   );
 }
 
