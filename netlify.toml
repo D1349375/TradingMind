@@ -1,5 +1,10 @@
 [build]
   command = "npm run build"
+  # 不指定的話,Base directory 是根目錄「/」時,Netlify 的預設值判斷會跟
+  # base directory 撞在一起(`publish` 跟 `base` 變成同一個值),
+  # @netlify/plugin-nextjs 會直接擋掉建置。明確指定成 .next 避開這個問題,
+  # 外掛實際上還是會接管真正的發布內容,這裡只是給一個不會衝突的佔位值。
+  publish = ".next"
 
 [build.environment]
   # Netlify 預設的 build image Node 版本可能比本機舊很多,固定成 LTS
