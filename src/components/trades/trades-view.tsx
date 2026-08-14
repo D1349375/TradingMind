@@ -172,7 +172,7 @@ export function TradesView({
   const listCollapsed = listWidth <= LIST_COLLAPSE_THRESHOLD;
   const listDrag = useDragResize(
     listWidth,
-    (w) => setListWidth(w < LIST_COLLAPSE_THRESHOLD ? 0 : w),
+    (w) => setListWidth(w < LIST_COLLAPSE_THRESHOLD ? 0 : Math.max(w, LIST_WIDTH_MIN)),
     0,
     LIST_WIDTH_MAX,
   );

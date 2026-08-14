@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+
+[build.environment]
+  # Netlify 預設的 build image Node 版本可能比本機舊很多,固定成 LTS
+  # 版本避免建置時撿到不支援的 Node 版本。
+  NODE_VERSION = "20"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
