@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BackButton } from "@/components/back-button";
 
 export const metadata: Metadata = {
   title: "隱私權政策 · TradeMind",
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <div className="mx-auto max-w-[760px] px-6 py-14 text-text">
+      <BackButton />
       <h1 className="mb-1 text-[1.6rem] font-semibold">隱私權政策</h1>
       <p className="mb-8 text-[0.82rem] text-text-tertiary">
         最後更新:2026 年 8 月 15 日(草稿版本,尚未正式生效)
@@ -69,7 +71,7 @@ export default function PrivacyPage() {
       </Section>
 
       <Section title="11. 聯絡我們">
-        <p className="text-text-tertiary">[待補:客服/資料保護聯絡 Email]</p>
+        <p>若你想查詢、閱覽、更正、刪除你的個人資料,或對本隱私權政策有任何疑問,請透過以下 Email 聯繫我們:cyc950831@gmail.com</p>
       </Section>
     </div>
   );

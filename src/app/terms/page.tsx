@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
+import { BackButton } from "@/components/back-button";
 
 export const metadata: Metadata = {
   title: "服務條款 · TradeMind",
 };
 
-// 草稿(2026-08-15)——內容需使用者/法律審閱後才能視為定案,尤其第 5/9 節
-// (退款政策、責任限制)牽涉台灣消保法與實際商業條件,不能只憑本頁文字上線。
+// 草稿(2026-08-15)——第 5/9/12 節內容已依使用者確認的商業條件補齊,
+// 但整份條款仍建議正式上線前諮詢法律意見過目一次,不能只憑本頁文字上線。
 export default function TermsPage() {
   return (
     <div className="mx-auto max-w-[760px] px-6 py-14 text-text">
+      <BackButton />
       <h1 className="mb-1 text-[1.6rem] font-semibold">服務條款</h1>
       <p className="mb-8 text-[0.82rem] text-text-tertiary">
         最後更新:2026 年 8 月 15 日(草稿版本,尚未正式生效)
@@ -53,9 +55,22 @@ export default function TermsPage() {
         <p>
           本服務提供 Credit 點數儲值包與(未來將提供的)訂閱方案,透過綠界科技(ECPay)處理金流。Credit 用於兌換 AI 分析等加值功能之使用額度。
         </p>
-        <p className="text-text-tertiary">
-          [待補:具體退款條件、猶豫期是否適用、已消耗 Credit 是否可退——這段需要你確認實際商業條件與是否諮詢法律意見後填入,本草稿刻意不自行認定。]
-        </p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            Credit 儲值包完成付款後 <strong>7 日內</strong>,若該筆訂單購買的 Credit
+            <strong>完全未使用</strong>(未曾用於 AI 分析等任何加值功能),你可以透過下方聯絡方式申請全額退款。
+          </li>
+          <li>
+            超過 7 日,或該筆訂單購買的 Credit 已有任一部分被使用,即視為服務已提供完成,不接受退款。你帳號內的 Credit
+            餘額若混合多筆訂單,退款申請以「先進先出」認定該筆訂單的 Credit 是否已被消耗。
+          </li>
+          <li>
+            未來推出的訂閱方案,扣款週期與取消規則屆時另行公告,取消訂閱僅停止下一期扣款,當期已付費用不予退還。
+          </li>
+          <li>
+            若因本服務端可歸責之重大事由(例如系統錯誤導致重複扣款、功能長期無法使用)致你無法正常使用已購買的 Credit,不受上述期限限制,請透過下方聯絡方式與我們聯繫處理。
+          </li>
+        </ul>
       </Section>
 
       <Section title="6. 使用者內容">
@@ -75,8 +90,23 @@ export default function TermsPage() {
       </Section>
 
       <Section title="9. 責任限制與免責聲明">
-        <p className="text-text-tertiary">
-          [待補:標準責任限制條款——本服務「現況」提供、不保證不中斷或無錯誤、賠償上限等,這段建議諮詢法律意見後定案,不宜直接套用通用範本。]
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            本服務依「現況」（as is）與「現有」（as available）狀態提供,不保證服務不中斷、無錯誤、完全安全,或符合你的特定需求。
+          </li>
+          <li>
+            在法律允許的最大範圍內,本服務對於間接、附帶、特殊或衍生性損害(包括但不限於交易決策損失、資料遺失、營業中斷)不負賠償責任,不論該責任基礎為契約、侵權行為或其他。
+          </li>
+          <li>
+            若本服務就特定事由仍須負賠償責任,累計賠償總額以你於求償事由發生前 <strong>12 個月內</strong>
+            實際支付予本服務之金額為上限;若你尚未有任何付費紀錄,則以新臺幣 1,000 元為上限。
+          </li>
+          <li>
+            本條款不排除或限制依消費者保護法或其他強制性法規不得排除或限制之責任。
+          </li>
+        </ul>
+        <p className="text-text-tertiary text-[0.82rem]">
+          （本節為通用 SaaS 責任限制條款草擬版本,實際數字與範圍建議諮詢法律意見後確認。）
         </p>
       </Section>
 
@@ -89,7 +119,7 @@ export default function TermsPage() {
       </Section>
 
       <Section title="12. 聯絡我們">
-        <p className="text-text-tertiary">[待補:客服/聯絡 Email]</p>
+        <p>若你對本服務條款有任何疑問,或需要申請退款、行使個人資料相關權利,請透過以下 Email 聯繫我們:cyc950831@gmail.com</p>
       </Section>
     </div>
   );

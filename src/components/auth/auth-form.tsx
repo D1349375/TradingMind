@@ -28,6 +28,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -39,6 +40,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setLoading(true);
     setError(null);
     setNotice(null);
+
+    if (isSignup && password !== confirmPassword) {
+      setError("兩次輸入的密碼不一致");
+      setLoading(false);
+      return;
+    }
 
     const supabase = createClient();
 
@@ -151,6 +158,28 @@ export function AuthForm({ mode }: { mode: Mode }) {
             placeholder={isSignup ? "至少 6 個字元" : ""}
           />
         </div>
+
+        {isSignup && (
+          <div>
+            <label
+              htmlFor="confirmPassword"
+              className="mb-1.5 block text-[0.8rem] font-semibold text-text-secondary"
+            >
+              確認密碼
+            </label>
+            <input
+              id="confirmPassword"
+              type="password"
+              required
+              minLength={6}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className={inputClass}
+              placeholder="再輸入一次密碼"
+            />
+          </div>
+        )}
 
         {error && (
           <div
