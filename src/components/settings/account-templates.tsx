@@ -82,6 +82,17 @@ export function AccountTemplates() {
           同一帳號可以建立多個交易模板,各自獨立選擇要不要連接交易所。「交易所連線」「目標設定」分頁裡可以分別針對每個模板設定;Dashboard 等分析頁預設合併看全部模板,也可以切換成只看其中幾個。
         </p>
 
+        {accounts.length > 1 && (
+          <p className="mb-3 rounded border border-dashed border-border bg-canvas px-3 py-2 text-[0.76rem] leading-relaxed text-text-secondary">
+            這裡是模板的新增/改名/刪除。
+            <span className="font-semibold text-text">
+              要切換「現在看哪幾個模板的資料」
+            </span>
+            ,去側邊欄最下面(Credit 顯示上面)那個小按鈕,點開可以勾選要合併看
+            哪幾個模板——例如想排除模擬帳號,把它取消勾選就好。
+          </p>
+        )}
+
         <ul className="space-y-2">
           {accounts.map((a) =>
             editingId === a.id ? (
