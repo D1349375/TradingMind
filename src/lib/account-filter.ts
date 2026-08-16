@@ -20,11 +20,13 @@ export type AccountScope = {
 // 混合資產類別檢查(規劃書 5.5 補充,Q16-Q18)——已連接交易所的模板資產類別
 // 隱含在連線本身裡(目前只有 Bybit,一律是 CRYPTO);未連接的手動模板則讀
 // 使用者自己宣告的 assetClass,沒宣告的視為「未知」也要算進「混合」判斷,
-// 不能悄悄當成跟其他模板同一類。
+// 不能悄悄當成跟其他模板同一類。即使只選了 1 個模板也要算出 classes(不能
+// 提早return空陣列),因為空狀態文案(「連接Bybit同步」提示)也要看這個
+// 結果決定要不要顯示,不是只有多模板混合檢查在用。
 export async function resolveAssetClassMix(
   accountIds: string[],
 ): Promise<{ mixed: boolean; classes: string[] }> {
-  if (accountIds.length <= 1) return { mixed: false, classes: [] };
+  if (accountIds.length === 0) return { mixed: false, classes: [] };
 
   const accounts = await prisma.tradingAccount.findMany({
     where: { id: { in: accountIds } },
@@ -36,6 +38,14 @@ export async function resolveAssetClassMix(
   );
 
   return { mixed: classes.size > 1, classes: Array.from(classes) };
+}
+
+// 目前唯一支援自動同步的交易所(Bybit)是純加密貨幣交易所。空狀態文案
+// 建議「連接 Bybit 同步」之前,先確認目前篩選範圍不是已經明確宣告成
+// 非加密貨幣資產類別(如期貨/股票/外匯/選擇權)——沒宣告過(「未知」)
+// 或本來就是加密貨幣則仍然適用建議連接。
+export function canSuggestBybit(classes: string[]): boolean {
+  return classes.length === 0 || classes.some((c) => c === "CRYPTO" || c === "未知");
 }
 
 export async function resolveAccountScope(userId: string): Promise<AccountScope> {

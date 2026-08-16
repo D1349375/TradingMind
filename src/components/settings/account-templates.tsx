@@ -38,6 +38,14 @@ export function AccountTemplates() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // 複製模板時預先帶入來源模板的名稱/性質/資產類別到新增表單——只複製
+  // 這些設定欄位,不複製交易所連線/目標設定/交易紀錄(那些是帳戶各自的
+  // 實際資料,複製過去語意不對,尤其 Bybit 連線本身就是唯一綁定的金鑰)。
+  const [duplicateSeed, setDuplicateSeed] = useState<{
+    label: string;
+    kind: AccountKind;
+    assetClass: AssetClass | null;
+  } | null>(null);
 
   async function load() {
     const d = await fetch("/api/accounts").then((r) => r.json());
@@ -65,6 +73,12 @@ export function AccountTemplates() {
     await load();
     router.refresh();
     setBusy(false);
+  }
+
+  function duplicate(a: AccountTemplate) {
+    setDuplicateSeed({ label: `${a.label} 複製`, kind: a.kind, assetClass: a.assetClass });
+    setEditingId(null);
+    setCreating(true);
   }
 
   if (accounts === null) {
@@ -157,6 +171,15 @@ export function AccountTemplates() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => duplicate(a)}
+                    disabled={busy}
+                    title="複製這個模板的名稱/性質/資產類別設定,建立一個新的空模板(不含連線、目標設定與交易紀錄)"
+                    className="rounded border border-border px-2.5 py-1 text-[0.78rem] text-text-secondary hover:border-accent hover:text-accent disabled:opacity-50"
+                  >
+                    複製
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => remove(a)}
                     disabled={busy || accounts.length <= 1}
                     title={accounts.length <= 1 ? "至少要保留一個帳戶模板" : undefined}
@@ -173,8 +196,12 @@ export function AccountTemplates() {
         <div className="mt-4 border-t border-border pt-4">
           {creating ? (
             <AccountForm
+              initial={duplicateSeed ?? undefined}
               submitLabel="建立"
-              onCancel={() => setCreating(false)}
+              onCancel={() => {
+                setCreating(false);
+                setDuplicateSeed(null);
+              }}
               onSubmit={async (data) => {
                 const res = await fetch("/api/accounts", {
                   method: "POST",
@@ -186,6 +213,7 @@ export function AccountTemplates() {
                   return;
                 }
                 setCreating(false);
+                setDuplicateSeed(null);
                 await load();
                 router.refresh();
               }}
@@ -193,7 +221,10 @@ export function AccountTemplates() {
           ) : (
             <button
               type="button"
-              onClick={() => setCreating(true)}
+              onClick={() => {
+                setDuplicateSeed(null);
+                setCreating(true);
+              }}
               className="rounded border border-border px-3 py-1.5 text-[0.82rem] text-text-secondary hover:border-accent hover:text-accent"
             >
               新增帳戶模板
@@ -224,7 +255,14 @@ function AccountForm({
   onCancel,
   onSubmit,
 }: {
-  initial?: AccountTemplate;
+  // 編輯模式傳完整 AccountTemplate;複製模式只帶名稱/性質/資產類別這三個
+  // 要複製的欄位(結構上仍相容,AccountTemplate 有的欄位這裡都是選填)。
+  initial?: {
+    label: string;
+    kind: AccountKind;
+    assetClass: AssetClass | null;
+    hasBybitConnection?: boolean;
+  };
   submitLabel: string;
   onCancel: () => void;
   onSubmit: (data: {

@@ -40,11 +40,13 @@ export function DashboardView({
   goals,
   lastSyncedText,
   assetClassMixed,
+  showBybitHint,
 }: {
   trades: NamedTradePoint[];
   goals: GoalState | null;
   lastSyncedText: string;
   assetClassMixed: boolean;
+  showBybitHint: boolean;
 }) {
   const [tab, setTab] = useState<DashTab>("overview");
   const [range, setRange] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
@@ -109,7 +111,9 @@ export function DashboardView({
             還沒有交易資料
           </div>
           <p className="text-[0.82rem] text-text-secondary">
-            到「設定 → 交易所連線」連接 Bybit 同步,或到「交易記錄」頁用 CSV 匯入、手動新增交易。
+            {showBybitHint
+              ? "到「設定 → 交易所連線」連接 Bybit 同步,或到「交易記錄」頁用 CSV 匯入、手動新增交易。"
+              : "這個模板的資產類別跟目前唯一支援自動同步的 Bybit(僅限加密貨幣)對不上,期貨/CFD 類交易所串接還在規劃中。可以到「交易記錄」頁用 CSV 匯入或手動新增交易。"}
           </p>
         </div>
       </>

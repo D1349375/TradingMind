@@ -38,12 +38,14 @@ export function PsychologyView({
   ruleCount,
   behaviorSettings,
   totalCapital,
+  showBybitHint,
 }: {
   trades: PsychTrade[];
   hasEmotionField: boolean;
   ruleCount: number;
   behaviorSettings: BehaviorSetting[];
   totalCapital: number | null;
+  showBybitHint: boolean;
 }) {
   const stats = useMemo(() => {
     const settled = trades
@@ -151,7 +153,9 @@ export function PsychologyView({
           還沒有交易資料
         </div>
         <p className="text-[0.82rem] text-text-secondary">
-          同步 Bybit、CSV 匯入或手動新增交易後,這裡會依實際資料計算。
+          {showBybitHint
+            ? "同步 Bybit、CSV 匯入或手動新增交易後,這裡會依實際資料計算。"
+            : "這個模板的資產類別跟目前唯一支援自動同步的 Bybit(僅限加密貨幣)對不上。用 CSV 匯入或手動新增交易後,這裡會依實際資料計算。"}
         </p>
       </div>
     );

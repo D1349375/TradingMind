@@ -95,11 +95,22 @@ export function AccountFilterSwitcher({
           <button
             type="button"
             onClick={() => apply(allAccountIds)}
-            className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[0.82rem] ${
-              isAll ? "bg-accent-soft font-semibold text-accent" : "text-text-secondary hover:bg-canvas hover:text-text"
+            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[0.82rem] ${
+              isAll ? "text-accent font-semibold" : "text-text-secondary hover:bg-canvas hover:text-text"
             }`}
           >
-            全部模板合併檢視
+            <span
+              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
+                isAll ? "border-accent bg-accent" : "border-border"
+              }`}
+            >
+              {isAll && (
+                <svg viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-2.5 w-2.5">
+                  <path d="M4 10l4 4 8-8" />
+                </svg>
+              )}
+            </span>
+            <span className="truncate">全選(合併檢視全部模板)</span>
           </button>
           <div className="my-1 border-t border-border" />
           {(accounts ?? allAccountIds.map((id) => ({ id, label: id }))).map((a) => {

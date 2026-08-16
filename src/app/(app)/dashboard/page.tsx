@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getDashboardData } from "@/lib/page-cache";
-import { resolveAccountScope, resolveAssetClassMix } from "@/lib/account-filter";
+import { resolveAccountScope, resolveAssetClassMix, canSuggestBybit } from "@/lib/account-filter";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 
 export const metadata: Metadata = {
@@ -30,6 +30,7 @@ export default async function DashboardPage() {
           goals={goals}
           lastSyncedText={lastSyncedText}
           assetClassMixed={assetClassMix.mixed}
+          showBybitHint={canSuggestBybit(assetClassMix.classes)}
         />
       </div>
     </div>
