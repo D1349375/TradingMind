@@ -43,16 +43,47 @@ const TASK_INSTRUCTIONS = `你是 TradeMind「單一人格交易分析」的 per
 - signature_line 要維持這個人格的表達 DNA(語氣/用詞/口頭禪),但內容必須掛鉤
   這筆交易的實際數據,不能是可以套在任何交易上的通用金句。
 
-輸出必須是嚴格 JSON(無其他文字、無 code fence、不要有任何前言或解釋),欄位:
-{
-  "alignment_score": <0-100整數>,
-  "key_model_applied": "短句,必須點名框架裡具體哪一條心智模型/決策啟發式",
-  "what_worked": "≤60字",
-  "what_didnt": "≤60字",
-  "hypothetical": "≤60字,如果是這個人格會怎麼做",
-  "signature_line": "≤40字,人格招牌語氣,適合截圖分享",
-  "data_gaps": ["..."] 或 null
-}`;
+欄位語意:
+- alignment_score:0-100整數
+- key_model_applied:短句,必須點名框架裡具體哪一條心智模型/決策啟發式
+- what_worked:≤60字
+- what_didnt:≤60字
+- hypothetical:≤60字,如果是這個人格會怎麼做
+- signature_line:≤40字,人格招牌語氣,適合截圖分享
+- data_gaps:字串陣列,沒有缺口就是空陣列`;
+
+// 輸出格式改用 Claude API 的 structured outputs(output_config.format)在
+// API 層面強制 schema,不再只靠 prompt 拜託模型「輸出嚴格JSON」——實測過
+// 純靠 prompt 約束,模型偶爾會吐出不符 schema 的欄位(型別錯或缺欄位),
+// 失敗時 Credit 不會被扣(只有成功才扣款),但真實 API 費用已經花掉,使用者
+// 重新產生一次就是雙倍真實成本。structured outputs 讓 API 直接保證回應
+// 符合這個 schema,從源頭消除這個失敗模式,而不是失敗後才重試。
+// JSON Schema 限制:不支援 minLength/maxLength 等字數限制(所以上面欄位
+// 說明裡的「≤60字」只能留在 prompt 裡當提示,無法用 schema 強制)、不支援
+// additionalProperties 設 false 以外的值、data_gaps 用「沒有缺口就是空
+// 陣列」取代 null,是因為 nullable 欄位在 anyOf 底下實測偶爾還是會被跳過。
+const OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    alignment_score: { type: "integer" },
+    key_model_applied: { type: "string" },
+    what_worked: { type: "string" },
+    what_didnt: { type: "string" },
+    hypothetical: { type: "string" },
+    signature_line: { type: "string" },
+    data_gaps: { type: "array", items: { type: "string" } },
+  },
+  required: [
+    "alignment_score",
+    "key_model_applied",
+    "what_worked",
+    "what_didnt",
+    "hypothetical",
+    "signature_line",
+    "data_gaps",
+  ],
+  additionalProperties: false,
+} as const;
 
 export type AnalysisResult = {
   alignmentScore: number;
@@ -61,27 +92,14 @@ export type AnalysisResult = {
   whatDidnt: string;
   hypothetical: string;
   signatureLine: string;
-  dataGaps: string[] | null;
+  dataGaps: string[];
 };
 
 function parseAnalysisJson(text: string): AnalysisResult {
-  // 模型偶爾還是會不聽話包 code fence,做最基本的容錯拆除,不做更多寬容——
-  // 格式不對就是不對,讓呼叫端知道要重試,而不是硬猜一個殘缺結果。
-  const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/```\s*$/i, "");
-  const raw = JSON.parse(cleaned);
-
-  if (
-    typeof raw.alignment_score !== "number" ||
-    typeof raw.key_model_applied !== "string" ||
-    typeof raw.what_worked !== "string" ||
-    typeof raw.what_didnt !== "string" ||
-    typeof raw.hypothetical !== "string" ||
-    typeof raw.signature_line !== "string" ||
-    (raw.data_gaps !== null && !Array.isArray(raw.data_gaps))
-  ) {
-    throw new Error("回應缺少必要欄位或型別不符");
-  }
-
+  // structured outputs 已經在 API 層保證欄位型別跟必填,這裡只是把 snake_case
+  // 轉成 camelCase,不用再做一次型別檢查——如果 JSON.parse 本身失敗,代表
+  // 遇到 max_tokens 截斷或 refusal 之類更上層的問題,讓例外往上拋。
+  const raw = JSON.parse(text);
   return {
     alignmentScore: raw.alignment_score,
     keyModelApplied: raw.key_model_applied,
@@ -132,6 +150,7 @@ export async function runPersonaAnalysis(
       // 全部花在 thinking 上,留 0 給實際輸出導致 502。明確關閉 thinking
       // 確保額度全部留給輸出文字。
       thinking: { type: "disabled" },
+      output_config: { format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
       system,
       messages: [
         {

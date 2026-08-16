@@ -36,16 +36,42 @@ const TASK_INSTRUCTIONS = `你是 TradeMind「週期回顧」的 persona 執行�
 - signature_line 要維持這個人格的表達 DNA(語氣/用詞/口頭禪),但內容必須
   掛鉤這期的實際數據,不能是可以套在任何期間上的通用金句。
 
-輸出必須是嚴格 JSON(無其他文字、無 code fence、不要有任何前言或解釋),欄位:
-{
-  "period_summary": "純數字摘要,不帶評價,≤80字",
-  "trend": "直接引用 [期間統計] 裡的 trend 值",
-  "key_model_applied": "短句,必須點名框架裡具體哪一條心智模型/決策啟發式",
-  "narrative": "150-250字的完整教練筆記,把數字/紀律/行為警訊/Setup表現串成一段連貫的敘事,不是短句拼接,好壞都要誠實講",
-  "next_action": "根據這期數據導出的具體行動,不能是空話",
-  "signature_line": "≤40字,人格招牌語氣,適合截圖分享",
-  "data_gaps": ["..."] 或 null
-}`;
+欄位語意:
+- period_summary:純數字摘要,不帶評價,≤80字
+- trend:直接引用 [期間統計] 裡的 trend 值
+- key_model_applied:短句,必須點名框架裡具體哪一條心智模型/決策啟發式
+- narrative:150-250字的完整教練筆記,把數字/紀律/行為警訊/Setup表現串成一段連貫的敘事,不是短句拼接,好壞都要誠實講
+- next_action:根據這期數據導出的具體行動,不能是空話
+- signature_line:≤40字,人格招牌語氣,適合截圖分享
+- data_gaps:字串陣列,沒有缺口就是空陣列`;
+
+// 輸出格式改用 Claude API 的 structured outputs(output_config.format),理由
+// 跟 lib/trader-debate.ts 同一段說明——在 API 層面強制 schema,不再只靠
+// prompt 拜託模型輸出嚴格 JSON,從源頭消除「輸出型別跟schema對不上」這個
+// 失敗模式(這正是實測時 EmperorBTC 月報遇到的那次「回應缺少必要欄位或
+// 型別不符」)。
+const OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    period_summary: { type: "string" },
+    trend: { type: "string" },
+    key_model_applied: { type: "string" },
+    narrative: { type: "string" },
+    next_action: { type: "string" },
+    signature_line: { type: "string" },
+    data_gaps: { type: "array", items: { type: "string" } },
+  },
+  required: [
+    "period_summary",
+    "trend",
+    "key_model_applied",
+    "narrative",
+    "next_action",
+    "signature_line",
+    "data_gaps",
+  ],
+  additionalProperties: false,
+} as const;
 
 export type PeriodReportResult = {
   periodSummary: string;
@@ -54,27 +80,13 @@ export type PeriodReportResult = {
   narrative: string;
   nextAction: string;
   signatureLine: string;
-  dataGaps: string[] | null;
+  dataGaps: string[];
 };
 
 function parsePeriodReportJson(text: string): PeriodReportResult {
-  // 模型偶爾還是會不聽話包 code fence,做最基本的容錯拆除,不做更多寬容——
-  // 格式不對就是不對,讓呼叫端知道要重試,而不是硬猜一個殘缺結果。
-  const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/```\s*$/i, "");
-  const raw = JSON.parse(cleaned);
-
-  if (
-    typeof raw.period_summary !== "string" ||
-    typeof raw.trend !== "string" ||
-    typeof raw.key_model_applied !== "string" ||
-    typeof raw.narrative !== "string" ||
-    typeof raw.next_action !== "string" ||
-    typeof raw.signature_line !== "string" ||
-    (raw.data_gaps !== null && !Array.isArray(raw.data_gaps))
-  ) {
-    throw new Error("回應缺少必要欄位或型別不符");
-  }
-
+  // structured outputs 已經在 API 層保證欄位型別跟必填,這裡只是把
+  // snake_case 轉成 camelCase。
+  const raw = JSON.parse(text);
   return {
     periodSummary: raw.period_summary,
     trend: raw.trend,
@@ -129,6 +141,7 @@ export async function runPeriodReport(
       // thinking 上導致輸出文字被截斷成空字串。這裡是固定 schema 短篇
       // 輸出,不需要深度推理,明確關閉 thinking。
       thinking: { type: "disabled" },
+      output_config: { format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
       system,
       messages: [
         {

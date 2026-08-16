@@ -17,7 +17,7 @@ type Result = {
   whatDidnt: string;
   hypothetical: string;
   signatureLine: string;
-  dataGaps: string[] | null;
+  dataGaps: string[];
 };
 
 export function AiAnalysis({ tradeId }: { tradeId: string }) {
