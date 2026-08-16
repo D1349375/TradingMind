@@ -57,9 +57,37 @@ function aggregate(
     arr.push(t);
     groups.set(k, arr);
   }
-  return [...groups.entries()]
-    .map(([key, list]) => ({ key, ...statsOf(list) }))
-    .sort((a, b) => b.pnl - a.pnl);
+  return [...groups.entries()].map(([key, list]) => ({ key, ...statsOf(list) }));
+}
+
+type RowSortKey = "pnl" | "winRate" | "avgR" | "n" | "natural";
+
+const SORT_METRIC_OPTIONS: { key: Exclude<RowSortKey, "natural">; label: string }[] = [
+  { key: "pnl", label: "累計損益" },
+  { key: "winRate", label: "勝率" },
+  { key: "avgR", label: "平均 R" },
+  { key: "n", label: "交易數" },
+];
+
+// 依累計損益/勝率/平均R/交易數排序一律高到低;缺值(勝率/平均R 樣本不足時
+// 為 null)排到最後,不當成 0 參與排序,避免「沒資料」被誤判成「表現最差」。
+// naturalOrder 用在星期幾這種有固定順序的維度,依索引由小到大排(週一→週日)。
+function sortRows(rows: Row[], sortKey: RowSortKey, naturalOrder?: string[]): Row[] {
+  if (sortKey === "natural" && naturalOrder) {
+    const index = new Map(naturalOrder.map((k, i) => [k, i]));
+    return [...rows].sort(
+      (a, b) => (index.get(a.key) ?? naturalOrder.length) - (index.get(b.key) ?? naturalOrder.length),
+    );
+  }
+  const key = sortKey === "natural" ? "pnl" : sortKey;
+  return [...rows].sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return bv - av;
+  });
 }
 
 // 二維交叉分析:依兩個維度分組,找「單一維度看不出來、兩個維度交叉才浮現」的
@@ -102,6 +130,9 @@ function aggregate2D(
 }
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+// 「依序」排序用的週一→週日順序,跟上面 WEEKDAYS(Date.getDay() 索引,週日=0)
+// 是不同用途,不要合併成同一個陣列。
+const WEEKDAY_NATURAL_ORDER = ["一", "二", "三", "四", "五", "六", "日"];
 
 type Dimension = {
   key: string;
@@ -167,6 +198,8 @@ export function SetupView({
   showBybitHint: boolean;
 }) {
   const [dim, setDim] = useState<string>("symbol");
+  const [setupSort, setSetupSort] = useState<RowSortKey>("pnl");
+  const [dimSort, setDimSort] = useState<RowSortKey>("pnl");
   const [crossDim1, setCrossDim1] = useState<string>("symbol");
   const [crossDim2, setCrossDim2] = useState<string>("weekday");
   const [crossMetric, setCrossMetric] = useState<"pnl" | "winRate" | "avgR" | "n">("pnl");
@@ -179,12 +212,19 @@ export function SetupView({
   const crossActive2 = DIMENSIONS.find((d) => d.key === crossDim2) ?? DIMENSIONS[1] ?? DIMENSIONS[0];
 
   const setupRows = useMemo(
-    () => aggregate(trades, (t) => t.setupName),
-    [trades],
+    () => sortRows(aggregate(trades, (t) => t.setupName), setupSort),
+    [trades, setupSort],
   );
+  // 只有星期幾這個維度有固定的「依序」意義(週一→週日),換到其他維度時
+  // 如果還停在「依序」,悄悄退回累計損益排序,而不是顯示一個沒作用的選項。
+  const dimNaturalOrder = active.key === "weekday" ? WEEKDAY_NATURAL_ORDER : undefined;
+  const effectiveDimSort = dimSort === "natural" && !dimNaturalOrder ? "pnl" : dimSort;
   const dimRows = useMemo(
-    () => (active.keyOf ? aggregate(trades, active.keyOf) : []),
-    [trades, active],
+    () =>
+      active.keyOf
+        ? sortRows(aggregate(trades, active.keyOf), effectiveDimSort, dimNaturalOrder)
+        : [],
+    [trades, active, effectiveDimSort, dimNaturalOrder],
   );
   const crossMatrix = useMemo(
     () =>
@@ -212,13 +252,16 @@ export function SetupView({
   return (
     <>
       <section className="mb-5">
-        <div className="mb-2.5 flex items-center gap-1.5">
+        <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
           <h2 className="text-[0.82rem] font-semibold text-text-secondary">
             Setup 排行
           </h2>
           <HelpTooltip>
-            依累計損益排序,不是校正過「多重比較」的信心分數——測的 Setup 越多,排第一名光靠運氣的機率也越高,目前只用交易數做粗略的樣本量分級提醒。
+            排序方式只是換一個角度看,不是校正過「多重比較」的信心分數——測的 Setup 越多,排第一名光靠運氣的機率也越高,目前只用交易數做粗略的樣本量分級提醒。
           </HelpTooltip>
+          {setupRows.length > 0 && (
+            <SortSelect value={setupSort} onChange={setSetupSort} className="ml-auto" />
+          )}
         </div>
         {setupRows.length === 0 ? (
           <div className="rounded border border-dashed border-border bg-surface px-5 py-8 text-center">
@@ -248,7 +291,7 @@ export function SetupView({
             把已平倉交易依所選維度分組,各自算勝率/平均R/累計損益。商品與星期幾直接用系統資料算,其他維度來自你自己填的自訂欄位。
           </HelpTooltip>
         </div>
-        <div className="mb-3.5 flex flex-wrap gap-1.5">
+        <div className="mb-3.5 flex flex-wrap items-center gap-1.5">
           {DIMENSIONS.map((d) => (
             <button
               key={d.key}
@@ -269,6 +312,14 @@ export function SetupView({
               )}
             </button>
           ))}
+          {active.available && dimRows.length > 0 && (
+            <SortSelect
+              value={effectiveDimSort}
+              onChange={setDimSort}
+              naturalLabel={dimNaturalOrder ? "依序(週一→週日)" : undefined}
+              className="ml-auto"
+            />
+          )}
         </div>
 
         {!active.available ? (
@@ -452,6 +503,33 @@ export function SetupView({
         )}
       </section>
     </>
+  );
+}
+
+function SortSelect({
+  value,
+  onChange,
+  naturalLabel,
+  className = "",
+}: {
+  value: RowSortKey;
+  onChange: (key: RowSortKey) => void;
+  naturalLabel?: string;
+  className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as RowSortKey)}
+      className={`rounded border border-border bg-canvas px-2 py-1 text-[0.78rem] text-text outline-none focus:border-accent ${className}`}
+    >
+      {SORT_METRIC_OPTIONS.map((o) => (
+        <option key={o.key} value={o.key}>
+          依{o.label}排序
+        </option>
+      ))}
+      {naturalLabel && <option value="natural">{naturalLabel}</option>}
+    </select>
   );
 }
 

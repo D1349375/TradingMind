@@ -126,6 +126,12 @@ export async function runPersonaAnalysis(
     body: JSON.stringify({
       model,
       max_tokens: 700,
+      // Claude Sonnet 5 執行 adaptive thinking 預設開啟,thinking 沒明講時
+      // max_tokens 是「思考+輸出文字」共用的硬上限——這裡是固定 schema 的
+      // 短篇 JSON 輸出,不需要深度推理,實測過模型會把整個 700 token 額度
+      // 全部花在 thinking 上,留 0 給實際輸出導致 502。明確關閉 thinking
+      // 確保額度全部留給輸出文字。
+      thinking: { type: "disabled" },
       system,
       messages: [
         {

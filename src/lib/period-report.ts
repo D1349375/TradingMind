@@ -118,7 +118,17 @@ export async function runPeriodReport(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 900,
+      // 900 實測不夠——narrative 欄位就要求150-250字,中文字在這個
+      // tokenizer 下不是 1 字 1 token,加上其他欄位跟 JSON 語法開銷,
+      // 900 上限真的會在輸出寫到一半被截斷(JSON.parse 直接噴
+      // "Unexpected end of JSON input")。拉高到 2000 留足夠餘裕,
+      // 費用差距可忽略(只按實際輸出token數計費,不是上限本身)。
+      max_tokens: 2000,
+      // 同 lib/trader-debate.ts 的說明:Claude Sonnet 5 預設開啟 adaptive
+      // thinking,會跟固定 max_tokens 搶額度,實測過真的把整個上限花在
+      // thinking 上導致輸出文字被截斷成空字串。這裡是固定 schema 短篇
+      // 輸出,不需要深度推理,明確關閉 thinking。
+      thinking: { type: "disabled" },
       system,
       messages: [
         {
