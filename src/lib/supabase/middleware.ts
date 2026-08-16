@@ -47,6 +47,14 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // 根路徑的登入分流本來各自呼叫一次 getUser()(這裡一次、page.tsx 又一次),
+  // 直接複用這裡已經打過的結果,少一次 Supabase 網路往返。
+  if (pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = user ? "/dashboard" : "/login";
+    return NextResponse.redirect(url);
+  }
+
   if (!user && PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

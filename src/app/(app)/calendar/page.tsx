@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { CalendarView, type CalTrade } from "@/components/calendar/calendar-view";
+import { getCalendarData } from "@/lib/page-cache";
+import { CalendarView } from "@/components/calendar/calendar-view";
 
 export const metadata: Metadata = {
   title: "日曆視圖 · TradeMind",
@@ -9,26 +9,7 @@ export const metadata: Metadata = {
 
 export default async function CalendarPage() {
   const user = await getCurrentUser();
-
-  const rows = await prisma.trade.findMany({
-    where: { userId: user!.id },
-    select: {
-      id: true,
-      symbol: true,
-      direction: true,
-      closedAt: true,
-      realizedPnl: true,
-    },
-    orderBy: { closedAt: "asc" },
-  });
-
-  const trades: CalTrade[] = rows.map((t) => ({
-    id: t.id,
-    symbol: t.symbol,
-    direction: t.direction,
-    closedAt: t.closedAt?.toISOString() ?? null,
-    realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
-  }));
+  const trades = await getCalendarData(user!.id);
 
   return (
     <div className="px-9 py-8">
