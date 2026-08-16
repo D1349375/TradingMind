@@ -10,7 +10,16 @@ type ConnectionState = {
   boundIps?: string[];
 };
 
-type AccountOption = { id: string; label: string };
+type AssetClass = "CRYPTO" | "FUTURES" | "STOCK" | "FOREX" | "OPTIONS";
+type AccountOption = { id: string; label: string; assetClass: AssetClass | null };
+
+const ASSET_CLASS_LABEL: Record<AssetClass, string> = {
+  CRYPTO: "加密貨幣",
+  FUTURES: "期貨",
+  STOCK: "股票",
+  FOREX: "外匯",
+  OPTIONS: "選擇權",
+};
 
 export function BybitConnection() {
   const [accounts, setAccounts] = useState<AccountOption[] | null>(null);
@@ -117,6 +126,16 @@ export function BybitConnection() {
   const inputClass =
     "w-full rounded border border-border bg-canvas px-3 py-2 font-mono text-[0.85rem] text-text outline-none placeholder:text-text-tertiary focus:border-accent";
 
+  const selectedAccount = accounts?.find((a) => a.id === accountId) ?? null;
+  // Bybit 是純加密貨幣交易所——模板宣告的資產類別如果不是加密貨幣(例如
+  // 期貨類的 FTMO),連 Bybit 金鑰上去語意就對不上,誠實提醒但不硬擋
+  // (使用者可能真的就是想在這個模板底下也記一筆加密貨幣交易)。期貨/CFD
+  // 類交易所串接(Tradovate/MT5)還在規劃中,見規劃書 5.6 節。
+  const assetClassMismatch =
+    selectedAccount?.assetClass && selectedAccount.assetClass !== "CRYPTO"
+      ? selectedAccount.assetClass
+      : null;
+
   const accountPicker =
     accounts && accounts.length > 1 ? (
       <div className="mb-4">
@@ -137,6 +156,15 @@ export function BybitConnection() {
       </div>
     ) : null;
 
+  const mismatchNotice = assetClassMismatch ? (
+    <div className="mb-4 rounded border border-warning bg-warning-bg px-3 py-2.5 text-[0.8rem] leading-relaxed text-warning">
+      這個模板的資產類別是「{ASSET_CLASS_LABEL[assetClassMismatch]}」,Bybit
+      是純加密貨幣交易所,類別對不上。期貨/CFD 類交易所串接(如 Tradovate、
+      MT5)還在規劃中,尚未支援——如果只是想在這個模板底下順便記一筆加密貨幣
+      交易,連接沒問題;不是的話,建議先不要連。
+    </div>
+  ) : null;
+
   if (accounts === null || state === null) {
     return (
       <div className="rounded border border-border bg-surface px-5 py-8 text-center text-[0.85rem] text-text-secondary">
@@ -149,6 +177,7 @@ export function BybitConnection() {
     return (
       <div className="rounded border border-border bg-surface px-5 py-5">
         {accountPicker}
+        {mismatchNotice}
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <div className="mb-1 flex items-center gap-2">
@@ -222,6 +251,7 @@ export function BybitConnection() {
   return (
     <div className="rounded border border-border bg-surface px-5 py-5">
       {accountPicker}
+      {mismatchNotice}
       <div className="mb-1 text-[0.9rem] font-semibold">連接 Bybit 帳戶</div>
       <p className="mb-4 text-[0.82rem] leading-relaxed text-text-secondary">
         TradeMind 只會讀取你的交易紀錄,不會也無法下單或提領。
