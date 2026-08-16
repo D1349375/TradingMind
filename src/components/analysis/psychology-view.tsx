@@ -6,6 +6,7 @@ import {
   type BehaviorSetting,
 } from "@/lib/behavior-detection";
 import { DETECTION_DEFS } from "@/lib/behavior-presets";
+import { disciplineComplianceRate } from "@/lib/stats";
 
 // 對應 prototype 的心態分析頁。
 //
@@ -114,24 +115,23 @@ export function PsychologyView({
       byEmotion.set(t.emotion, prev);
     }
 
-    // 紀律遵守:依這筆交易的紀律檢查清單完成度算,不是單一是非題——
-    // 只要有勾過至少一條規則就算「已標記」,全部勾選才算「有遵守」。
+    // 紀律遵守率抽成共用函式(lib/stats.ts 的 disciplineComplianceRate),
+    // 週期回顧功能也會用同一份邏輯,不留兩份重複計算。違規損益是這個畫面
+    // 特有的延伸指標,留在這裡算。
     const marked = trades.filter((t) => t.ruleChecks.length > 0);
-    const followed = marked.filter((t) => t.ruleChecks.every((c) => c));
     const violated = marked.filter((t) => t.ruleChecks.some((c) => !c));
     const violationLoss = violated.reduce(
       (s, t) => s + Math.min(0, t.realizedPnl ?? 0),
       0,
     );
+    const discipline = disciplineComplianceRate(trades);
 
     return {
       maxWinStreak: maxWin,
       maxLossStreak: maxLoss,
       emotionRows: [...byEmotion.entries()].sort((a, b) => b[1].pnl - a[1].pnl),
-      disciplineMarked: marked.length,
-      disciplineRate: marked.length
-        ? (followed.length / marked.length) * 100
-        : null,
+      disciplineMarked: discipline.marked,
+      disciplineRate: discipline.rate,
       violationCount: violated.length,
       violationLoss,
       gradeRows: [...byGrade.entries()].sort((a, b) =>

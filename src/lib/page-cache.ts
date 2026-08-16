@@ -17,7 +17,7 @@ import { prisma } from "@/lib/prisma";
 // TradingAccount.trades 的 onDelete: SetNull),合併檢視應該看到使用者
 // 名下「所有」交易,不分有沒有掛在某個模板底下。只有使用者主動篩選成
 // 特定模板子集合時,才需要真的排除掉未分類的交易。
-function tradeAccountFilter(accountIds: string[], isFiltered: boolean) {
+export function tradeAccountFilter(accountIds: string[], isFiltered: boolean) {
   return isFiltered ? { in: accountIds } : undefined;
 }
 

@@ -467,6 +467,59 @@ export const SAMPLE_TIER_LABEL: Record<Exclude<SampleTier, "sufficient">, string
   building: "初步趨勢,仍需累積",
 };
 
+export type DisciplineComplianceResult = { marked: number; rate: number | null };
+
+// 紀律遵守率:依這筆交易的紀律檢查清單完成度算,不是單一是非題——只要有勾過
+// 至少一條規則就算「已標記」,全部勾選才算「有遵守」。原本各自寫在
+// psychology-view.tsx 跟週期回顧(lib/period-stats.ts)裡,抽成共用函式。
+export function disciplineComplianceRate(
+  trades: { ruleChecks: boolean[] }[],
+): DisciplineComplianceResult {
+  const marked = trades.filter((t) => t.ruleChecks.length > 0);
+  const followed = marked.filter((t) => t.ruleChecks.every((c) => c));
+  return {
+    marked: marked.length,
+    rate: marked.length ? (followed.length / marked.length) * 100 : null,
+  };
+}
+
+export type SetupRankRow = {
+  name: string;
+  n: number;
+  winRate: number | null;
+  pnl: number;
+};
+
+// Setup 排行前 N 名,依總損益排序——週期回顧(lib/period-stats.ts)專用的
+// 精簡版,只要排行前幾名,不像 setup-view.tsx 的 aggregate() 需要支援任意
+// 維度分組跟二維交叉分析,兩邊定位不同不強行合併成同一個函式。
+export function topSetupsByPnl(
+  trades: { setupName: string | null; realizedPnl: number | null }[],
+  n = 3,
+): SetupRankRow[] {
+  const groups = new Map<string, { realizedPnl: number | null }[]>();
+  for (const t of trades) {
+    if (t.setupName === null) continue;
+    const arr = groups.get(t.setupName) ?? [];
+    arr.push(t);
+    groups.set(t.setupName, arr);
+  }
+  return [...groups.entries()]
+    .map(([name, list]) => {
+      const pnls = list.map((t) => t.realizedPnl).filter((p): p is number => p !== null);
+      const wins = pnls.filter((p) => p > 0).length;
+      const losses = pnls.filter((p) => p < 0).length;
+      return {
+        name,
+        n: list.length,
+        winRate: wins + losses > 0 ? (wins / (wins + losses)) * 100 : null,
+        pnl: pnls.reduce((s, p) => s + p, 0),
+      };
+    })
+    .sort((a, b) => b.pnl - a.pnl)
+    .slice(0, n);
+}
+
 // 依「本地日期」分組的每日損益。
 // 分組必須在瀏覽器端做——交易時間存的是 UTC,但使用者認知的「哪一天」
 // 是自己的時區;在伺服器分組會讓跨午夜的交易歸錯天。

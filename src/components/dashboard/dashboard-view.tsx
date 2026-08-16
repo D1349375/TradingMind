@@ -169,7 +169,7 @@ export function DashboardView({
   );
 }
 
-function StatGrid({ summary }: { summary: ReturnType<typeof summarise> }) {
+export function StatGrid({ summary }: { summary: ReturnType<typeof summarise> }) {
   const cells: { label: string; value: string; tone?: "profit" | "loss"; hint?: string }[] = [
     {
       label: "總損益",

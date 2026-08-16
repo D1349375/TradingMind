@@ -436,7 +436,7 @@ function HourlyTable({ buckets }: { buckets: ReturnType<typeof hourOfDayBreakdow
   );
 }
 
-function DailyBarChart({ data }: { data: { date: string; pnl: number; count: number }[] }) {
+export function DailyBarChart({ data }: { data: { date: string; pnl: number; count: number }[] }) {
   const [hover, setHover] = useState<number | null>(null);
   if (data.length === 0) {
     return <p className="text-[0.82rem] text-text-secondary">還沒有已平倉交易。</p>;

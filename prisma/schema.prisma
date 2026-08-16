@@ -19,10 +19,15 @@ datasource db {
 
 // 對應 Supabase Auth 的 auth.users,id 用同一組 uuid(標準 Supabase+Prisma 搭配方式)
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
+  id               String           @id @default(uuid())
+  email            String           @unique
+  name             String?
+  createdAt        DateTime         @default(now())
+  // 2026-08-16 新增,架構骨架先搭好(規劃書訂閱分級草案),這次還沒有任何
+  // 訂閱購買流程能把使用者變成 STANDARD/ADVANCED,一律 FREE。AI 週報/月報
+  // 這次先不做 tier 檢查(見 lib/period-report.ts 開頭說明),等綠界定期
+  // 定額 API 接上真的訂閱購買流程後,才會有地方真的把這個欄位改掉。
+  subscriptionTier SubscriptionTier @default(FREE)
 
   accounts          TradingAccount[]
   trades            Trade[]
@@ -35,6 +40,13 @@ model User {
   creditBalance     CreditBalance?
   creditTxns        CreditTransaction[]
   creditPurchases   CreditPurchase[]
+  periodReports     PeriodReport[]
+}
+
+enum SubscriptionTier {
+  FREE
+  STANDARD
+  ADVANCED
 }
 
 // 使用者自己標記的帳號(實盤/模擬/Prop Firm),可以有多個——多模板帳戶架構
@@ -346,4 +358,29 @@ model RateLimitBucket {
   key       String   @id
   count     Int      @default(1)
   expiresAt DateTime
+}
+
+// AI 週報/月報(TradeMind_AI週報月報_設計文件.md 第八節)。statsSnapshot
+// 存的是「生成當下算出的[期間統計]」(連同 dailySeries 給詳情頁重畫圖表用,
+// 不是全部都會送進 LLM prompt,見 lib/period-stats.ts),result 是 LLM 輸出
+// 的結構化結果——兩者都是生成當下的快照,之後補匯入交易不會悄悄改動舊報告
+// 的數字,回頭看舊報告時畫面數字要是「生成當下真實看到的樣子」。
+model PeriodReport {
+  id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodType    PeriodType
+  periodStart   DateTime
+  periodEnd     DateTime
+  persona       String // 生成當下用的人格(ict/tjr/emperorbtc)
+  statsSnapshot Json
+  result        Json
+  createdAt     DateTime   @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum PeriodType {
+  WEEK
+  MONTH
 }
