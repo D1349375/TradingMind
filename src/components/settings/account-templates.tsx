@@ -35,6 +35,7 @@ export function AccountTemplates() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function load() {
     const d = await fetch("/api/accounts").then((r) => r.json());
@@ -63,23 +64,6 @@ export function AccountTemplates() {
     setBusy(false);
   }
 
-  async function rename(a: AccountTemplate) {
-    const next = window.prompt("模板名稱", a.label);
-    if (next === null) return;
-    const label = next.trim();
-    if (!label || label === a.label) return;
-    setBusy(true);
-    setError(null);
-    const res = await fetch(`/api/accounts/${a.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label }),
-    });
-    if (!res.ok) setError((await res.json()).error ?? "更新失敗");
-    await load();
-    setBusy(false);
-  }
-
   if (accounts === null) {
     return (
       <div className="rounded border border-border bg-surface px-5 py-8 text-center text-[0.85rem] text-text-secondary">
@@ -99,61 +83,96 @@ export function AccountTemplates() {
         </p>
 
         <ul className="space-y-2">
-          {accounts.map((a) => (
-            <li
-              key={a.id}
-              className="rounded border border-border bg-canvas px-3 py-2.5"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 text-[0.9rem] font-semibold">
-                    {a.label}
-                    <span className="rounded-full border border-border px-2 py-0.5 text-[0.72rem] font-normal text-text-secondary">
-                      {KIND_LABEL[a.kind]}
-                    </span>
+          {accounts.map((a) =>
+            editingId === a.id ? (
+              <li
+                key={a.id}
+                className="rounded border border-accent bg-canvas px-3 py-3"
+              >
+                <AccountForm
+                  initial={a}
+                  submitLabel="儲存"
+                  onCancel={() => setEditingId(null)}
+                  onSubmit={async (data) => {
+                    const res = await fetch(`/api/accounts/${a.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(data),
+                    });
+                    if (!res.ok) {
+                      setError((await res.json()).error ?? "更新失敗");
+                      return;
+                    }
+                    setEditingId(null);
+                    await load();
+                  }}
+                />
+              </li>
+            ) : (
+              <li
+                key={a.id}
+                className="rounded border border-border bg-canvas px-3 py-2.5"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 text-[0.9rem] font-semibold">
+                      {a.label}
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[0.72rem] font-normal text-text-secondary">
+                        {KIND_LABEL[a.kind]}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[0.75rem] text-text-secondary">
+                      {a.hasBybitConnection
+                        ? "已連接 Bybit"
+                        : a.assetClass
+                          ? ASSET_CLASS_LABEL[a.assetClass]
+                          : "未連接交易所 · 尚未宣告資產類別"}
+                      {" · "}
+                      {a.tradeCount} 筆交易
+                      {a.hasGoal ? " · 已設定目標與風控" : ""}
+                    </div>
                   </div>
-                  <div className="mt-0.5 text-[0.75rem] text-text-secondary">
-                    {a.hasBybitConnection
-                      ? "已連接 Bybit"
-                      : a.assetClass
-                        ? ASSET_CLASS_LABEL[a.assetClass]
-                        : "未連接交易所 · 尚未宣告資產類別"}
-                    {" · "}
-                    {a.tradeCount} 筆交易
-                    {a.hasGoal ? " · 已設定目標與風控" : ""}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(a.id)}
+                    disabled={busy}
+                    className="rounded border border-border px-2.5 py-1 text-[0.78rem] text-text-secondary hover:border-accent hover:text-accent disabled:opacity-50"
+                  >
+                    編輯
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(a)}
+                    disabled={busy || accounts.length <= 1}
+                    title={accounts.length <= 1 ? "至少要保留一個帳戶模板" : undefined}
+                    className="rounded border border-border px-2.5 py-1 text-[0.78rem] text-text-secondary hover:border-loss hover:text-loss disabled:opacity-30"
+                  >
+                    刪除
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => rename(a)}
-                  disabled={busy}
-                  className="rounded border border-border px-2.5 py-1 text-[0.78rem] text-text-secondary hover:border-accent hover:text-accent disabled:opacity-50"
-                >
-                  改名
-                </button>
-                <button
-                  type="button"
-                  onClick={() => remove(a)}
-                  disabled={busy || accounts.length <= 1}
-                  title={accounts.length <= 1 ? "至少要保留一個帳戶模板" : undefined}
-                  className="rounded border border-border px-2.5 py-1 text-[0.78rem] text-text-secondary hover:border-loss hover:text-loss disabled:opacity-30"
-                >
-                  刪除
-                </button>
-              </div>
-            </li>
-          ))}
+              </li>
+            ),
+          )}
         </ul>
 
         <div className="mt-4 border-t border-border pt-4">
           {creating ? (
-            <NewAccountForm
+            <AccountForm
+              submitLabel="建立"
               onCancel={() => setCreating(false)}
-              onCreated={async () => {
+              onSubmit={async (data) => {
+                const res = await fetch("/api/accounts", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(data),
+                });
+                if (!res.ok) {
+                  setError((await res.json()).error ?? "建立失敗");
+                  return;
+                }
                 setCreating(false);
                 await load();
               }}
-              onError={setError}
             />
           ) : (
             <button
@@ -179,39 +198,42 @@ export function AccountTemplates() {
   );
 }
 
-function NewAccountForm({
+// 新增/編輯共用同一個表單——編輯時 initial 帶入既有值預先選好,提交走
+// PATCH 而不是 POST。資產類別選項在已連接交易所時仍然顯示但會被忽略
+// (連線本身決定資產類別,見 resolveAssetClass),用說明文字講清楚而不是
+// 直接隱藏欄位,避免使用者以為自己選的沒被存到。
+function AccountForm({
+  initial,
+  submitLabel,
   onCancel,
-  onCreated,
-  onError,
+  onSubmit,
 }: {
+  initial?: AccountTemplate;
+  submitLabel: string;
   onCancel: () => void;
-  onCreated: () => void;
-  onError: (e: string | null) => void;
+  onSubmit: (data: {
+    label: string;
+    kind: AccountKind;
+    assetClass: AssetClass | null;
+  }) => Promise<void>;
 }) {
-  const [label, setLabel] = useState("");
-  const [kind, setKind] = useState<AccountKind>("LIVE");
-  const [assetClass, setAssetClass] = useState<AssetClass | "">("");
+  const [label, setLabel] = useState(initial?.label ?? "");
+  const [kind, setKind] = useState<AccountKind>(initial?.kind ?? "LIVE");
+  const [assetClass, setAssetClass] = useState<AssetClass | "">(
+    initial?.assetClass ?? "",
+  );
   const [saving, setSaving] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    onError(null);
-    const res = await fetch("/api/accounts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        label,
-        kind,
-        assetClass: assetClass || undefined,
-      }),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      onError((await res.json()).error ?? "建立失敗");
-      return;
+    try {
+      // 明確送 null 而不是省略欄位——PATCH 只更新請求裡「有出現」的欄位,
+      // 省略會被當成「不動這欄」,選回「先不指定」時就永遠清不掉舊值。
+      await onSubmit({ label, kind, assetClass: assetClass || null });
+    } finally {
+      setSaving(false);
     }
-    onCreated();
   }
 
   const input =
@@ -258,13 +280,15 @@ function NewAccountForm({
           資產類別(選填)
         </label>
         <p className="mb-1.5 text-[0.75rem] text-text-secondary">
-          只有不打算連接交易所的手動記錄模板需要填——之後在「交易所連線」分頁
-          幫這個模板接上連線的話,資產類別會自動視為連線本身的類型,不用另外選。
+          {initial?.hasBybitConnection
+            ? "這個模板已連接 Bybit,資產類別固定視為連線本身的類型(加密貨幣),這裡選了也不會被採用。"
+            : "只有不打算連接交易所的手動記錄模板需要填——之後在「交易所連線」分頁幫這個模板接上連線的話,資產類別會自動視為連線本身的類型,不用另外選。"}
         </p>
         <select
           className={input}
           value={assetClass}
           onChange={(e) => setAssetClass(e.target.value as AssetClass | "")}
+          disabled={initial?.hasBybitConnection}
         >
           <option value="">先不指定</option>
           {(Object.keys(ASSET_CLASS_LABEL) as AssetClass[]).map((c) => (
@@ -274,13 +298,14 @@ function NewAccountForm({
           ))}
         </select>
       </div>
+
       <div className="flex gap-2">
         <button
           type="submit"
           disabled={saving}
           className="rounded bg-accent px-3 py-1.5 text-[0.82rem] font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
-          {saving ? "建立中…" : "建立"}
+          {saving ? "處理中…" : submitLabel}
         </button>
         <button
           type="button"
