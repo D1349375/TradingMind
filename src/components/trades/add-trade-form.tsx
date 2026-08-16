@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+type AccountOption = { id: string; label: string };
 
 // 交易記錄頁的「+ 新增交易」按鈕 + 彈窗表單。只收已平倉交易——
 // 見 /api/trades route 開頭的說明,app 目前沒有「未平倉部位」這個概念。
@@ -27,6 +29,8 @@ export function AddTradeForm() {
 
 function Modal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
+  const [accounts, setAccounts] = useState<AccountOption[] | null>(null);
+  const [accountId, setAccountId] = useState<string>("");
   const [symbol, setSymbol] = useState("");
   const [direction, setDirection] = useState<"LONG" | "SHORT">("LONG");
   const [entryPrice, setEntryPrice] = useState("");
@@ -46,6 +50,17 @@ function Modal({ onClose }: { onClose: () => void }) {
     "w-full rounded border border-border bg-canvas px-2.5 py-1.5 text-[0.87rem] text-text outline-none placeholder:text-text-tertiary focus:border-accent";
   const label = "mb-1 block text-[0.78rem] font-semibold text-text-secondary";
 
+  useEffect(() => {
+    fetch("/api/accounts")
+      .then((r) => r.json())
+      .then((d) => {
+        const list: AccountOption[] = d.accounts ?? [];
+        setAccounts(list);
+        if (list.length > 0) setAccountId(list[0].id);
+      })
+      .catch(() => setAccounts([]));
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -54,6 +69,7 @@ function Modal({ onClose }: { onClose: () => void }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        accountId: accountId || undefined,
         symbol,
         direction,
         entryPrice,
@@ -99,6 +115,22 @@ function Modal({ onClose }: { onClose: () => void }) {
         </div>
 
         <form onSubmit={submit} className="space-y-3">
+          {accounts && accounts.length > 1 && (
+            <div>
+              <label className={label}>帳戶模板</label>
+              <select
+                className={input}
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={label}>商品名稱</label>

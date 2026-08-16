@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Result = { imported: number; skippedDuplicates: number; errors: { line: number; message: string }[] };
+type AccountOption = { id: string; label: string };
 
 // Bybit「已實現盈虧」CSV 匯出檔匯入。格式解析見 lib/bybit-csv.ts 開頭註解——
 // 這份 CSV 沒有方向欄位也沒有時區資訊,方向靠公式反推、時區要使用者自己
@@ -29,11 +30,24 @@ export function ImportCsvForm() {
 
 function Modal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
+  const [accounts, setAccounts] = useState<AccountOption[] | null>(null);
+  const [accountId, setAccountId] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [offsetHours, setOffsetHours] = useState(() => -(new Date().getTimezoneOffset() / 60));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+
+  useEffect(() => {
+    fetch("/api/accounts")
+      .then((r) => r.json())
+      .then((d) => {
+        const list: AccountOption[] = d.accounts ?? [];
+        setAccounts(list);
+        if (list.length > 0) setAccountId(list[0].id);
+      })
+      .catch(() => setAccounts([]));
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,7 +60,11 @@ function Modal({ onClose }: { onClose: () => void }) {
       const res = await fetch("/api/trades/import-csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csvText, utcOffsetMinutes: offsetHours * 60 }),
+        body: JSON.stringify({
+          csvText,
+          utcOffsetMinutes: offsetHours * 60,
+          accountId: accountId || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -85,6 +103,22 @@ function Modal({ onClose }: { onClose: () => void }) {
         </p>
 
         <form onSubmit={submit} className="space-y-3">
+          {accounts && accounts.length > 1 && (
+            <div>
+              <label className="mb-1 block text-[0.8rem] font-semibold text-text-secondary">帳戶模板</label>
+              <select
+                className={input}
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-[0.8rem] font-semibold text-text-secondary">CSV 檔案</label>
             <input

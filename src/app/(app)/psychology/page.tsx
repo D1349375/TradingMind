@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getPsychologyData } from "@/lib/page-cache";
+import { resolveAccountScope } from "@/lib/account-filter";
 import { PsychologyView } from "@/components/analysis/psychology-view";
 import { DETECTION_DEFS } from "@/lib/behavior-presets";
 
@@ -10,8 +11,9 @@ export const metadata: Metadata = {
 
 export default async function PsychologyPage() {
   const user = await getCurrentUser();
+  const scope = await resolveAccountScope(user!.id);
   const { trades, hasEmotionField, ruleCount, behaviorRows, totalCapital } =
-    await getPsychologyData(user!.id);
+    await getPsychologyData(user!.id, scope.accountIds, scope.isFiltered);
 
   const byKind = new Map(behaviorRows.map((r) => [r.kind, r]));
   const behaviorSettings = DETECTION_DEFS.map((def) => {

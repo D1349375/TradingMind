@@ -87,10 +87,21 @@ export function GoalCards({
   todayLoss,
   monthPnl,
 }: {
-  goals: GoalState;
+  // null:目前檢視範圍橫跨多個帳戶模板——目標與風控是每個模板各自設定的
+  // (規劃書 5.5/Q23),不能硬合併成一組數字,誠實顯示「不適用」而不是
+  // 空手套一個看起來像「尚未設定」的假狀態。
+  goals: GoalState | null;
   todayLoss: number; // 今日已實現虧損(正值)
   monthPnl: number; // 本月累計損益
 }) {
+  if (goals === null) {
+    return (
+      <div className="mb-5 rounded border border-border bg-surface px-5 py-5 text-center text-[0.82rem] text-text-secondary">
+        目標與風控是每個帳戶模板各自設定——切換到單一模板檢視才會顯示回撤緩衝與獲利目標。
+      </div>
+    );
+  }
+
   const limit =
     goals.lossLimitMode === "PERCENT"
       ? (goals.totalCapital ?? 0) * ((goals.dailyLossPercent ?? 0) / 100)

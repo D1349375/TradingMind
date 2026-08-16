@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { AccountTemplates } from "@/components/settings/account-templates";
 import { BybitConnection } from "@/components/settings/bybit-connection";
 import { GoalSettings } from "@/components/settings/goal-settings";
 import { FieldBuilder } from "@/components/settings/field-builder";
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
 
 // 分頁對應 prototype/index.html 的設定頁六分頁,「帳戶」「儲值」是後來加的。
 const TABS = [
+  { key: "accounts", label: "帳戶模板" },
   { key: "exchange", label: "交易所連線" },
   { key: "fields", label: "欄位自訂" },
   { key: "discipline", label: "紀律規則" },
@@ -68,12 +70,14 @@ export default async function SettingsPage({
         {/* 欄位自訂的清單列較寬(排序鈕+名稱+型別+停用),放寬一些 */}
         <div
           className={
-            active === "fields" || active === "discipline"
+            active === "fields" || active === "discipline" || active === "accounts"
               ? "max-w-[760px]"
               : "max-w-[640px]"
           }
         >
-          {active === "exchange" ? (
+          {active === "accounts" ? (
+            <AccountTemplates />
+          ) : active === "exchange" ? (
             <BybitConnection />
           ) : active === "goals" ? (
             <GoalSettings />

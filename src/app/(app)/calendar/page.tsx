@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getCalendarData } from "@/lib/page-cache";
+import { resolveAccountScope } from "@/lib/account-filter";
 import { CalendarView } from "@/components/calendar/calendar-view";
 
 export const metadata: Metadata = {
@@ -9,7 +10,8 @@ export const metadata: Metadata = {
 
 export default async function CalendarPage() {
   const user = await getCurrentUser();
-  const trades = await getCalendarData(user!.id);
+  const scope = await resolveAccountScope(user!.id);
+  const trades = await getCalendarData(user!.id, scope.accountIds, scope.isFiltered);
 
   return (
     <div className="px-9 py-8">

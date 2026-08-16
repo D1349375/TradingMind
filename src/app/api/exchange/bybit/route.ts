@@ -1,17 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { getOwnedAccount } from "@/lib/accounts";
 import { prisma } from "@/lib/prisma";
 import { decrypt, encrypt, maskApiKey } from "@/lib/crypto";
 import { validateReadOnlyKey } from "@/lib/bybit";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // 連線狀態。回傳內容刻意只有遮罩後的 key,secret 永遠不出後端。
-export async function GET() {
+// Bybit 連線綁在帳戶模板底下(2026-08-16 起),一律要帶 accountId 並驗證
+// 這個模板屬於目前登入的使用者。
+export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
 
+  const accountId = request.nextUrl.searchParams.get("accountId");
+  if (!accountId || !(await getOwnedAccount(user.id, accountId))) {
+    return NextResponse.json({ error: "找不到這個帳戶模板" }, { status: 404 });
+  }
+
   const conn = await prisma.bybitConnection.findUnique({
-    where: { userId: user.id },
+    where: { accountId },
     select: { apiKeyCipher: true, lastSyncedAt: true, createdAt: true },
   });
 
@@ -35,11 +43,16 @@ export async function POST(request: NextRequest) {
   const rl = await checkRateLimit("bybit-connect", user.id, { limit: 10, windowSeconds: 600 });
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterSeconds);
 
-  let body: { apiKey?: unknown; apiSecret?: unknown };
+  let body: { accountId?: unknown; apiKey?: unknown; apiSecret?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "請求格式錯誤" }, { status: 400 });
+  }
+
+  const accountId = typeof body.accountId === "string" ? body.accountId : "";
+  if (!accountId || !(await getOwnedAccount(user.id, accountId))) {
+    return NextResponse.json({ error: "找不到這個帳戶模板" }, { status: 404 });
   }
 
   const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
@@ -61,13 +74,13 @@ export async function POST(request: NextRequest) {
   }
 
   await prisma.bybitConnection.upsert({
-    where: { userId: user.id },
+    where: { accountId },
     update: {
       apiKeyCipher: encrypt(apiKey),
       apiSecretCipher: encrypt(apiSecret),
     },
     create: {
-      userId: user.id,
+      accountId,
       apiKeyCipher: encrypt(apiKey),
       apiSecretCipher: encrypt(apiSecret),
     },
@@ -80,10 +93,15 @@ export async function POST(request: NextRequest) {
   });
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
 
-  await prisma.bybitConnection.deleteMany({ where: { userId: user.id } });
+  const accountId = request.nextUrl.searchParams.get("accountId");
+  if (!accountId || !(await getOwnedAccount(user.id, accountId))) {
+    return NextResponse.json({ error: "找不到這個帳戶模板" }, { status: 404 });
+  }
+
+  await prisma.bybitConnection.deleteMany({ where: { accountId } });
   return NextResponse.json({ connected: false });
 }

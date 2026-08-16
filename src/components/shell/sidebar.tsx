@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTodayLossDanger, type GoalForAlert } from "@/lib/notifications";
+import { AccountFilterSwitcher } from "@/components/shell/account-filter-switcher";
 
 // 對應 prototype/index.html 的側邊欄。
 // 尺寸一律固定 px(design.md 第三節:介面外殼不隨內容字級縮放)。
@@ -169,12 +170,14 @@ export function Sidebar({
   pendingReview,
   recentTrades,
   goal,
+  accountFilter,
 }: {
   email: string;
   credits: number;
   pendingReview: number;
   recentTrades: { closedAt: string | null; realizedPnl: number | null }[];
   goal: GoalForAlert;
+  accountFilter: { accountIds: string[]; allAccountIds: string[] };
 }) {
   const pathname = usePathname();
   const [scale, setScale] = useState("15.5");
@@ -404,6 +407,11 @@ export function Sidebar({
             {!collapsed && <span className="truncate">{email}</span>}
           </span>
         </div>
+        <AccountFilterSwitcher
+          allAccountIds={accountFilter.allAccountIds}
+          selectedAccountIds={accountFilter.accountIds}
+          collapsed={collapsed}
+        />
         <div className={`flex items-center px-2 py-[5px] ${collapsed ? "flex-col gap-2" : "justify-between"}`}>
           <span
             className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11.5px] text-text-secondary"

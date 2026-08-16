@@ -27,9 +27,15 @@ const signed = (n: number, d = 2) => `${n >= 0 ? "+" : ""}${fmt(n, d)}`;
 export function PerformanceView({
   trades,
   totalCapital,
+  assetClassMixed,
 }: {
   trades: NamedTradePoint[];
   totalCapital: number | null;
+  // 目前檢視範圍橫跨多種資產類別(規劃書 5.5 補充,Q16-Q18)——部位大小/
+  // 槓桿/損益的「單位」在不同資產類別間不能直接混算(加密貨幣的部位大小、
+  // 期貨的手數、股票的股數無法比較),這幾個報表直接不顯示並說明原因,
+  // 不強行合併算出一個沒有意義的數字。
+  assetClassMixed: boolean;
 }) {
   // 每日長條圖依「本地日期」分組,伺服器/瀏覽器時區不同會誤判——
   // 跟 Dashboard 日曆卡、日曆視圖同一個理由,延後到掛載後才計算。
@@ -136,12 +142,16 @@ export function PerformanceView({
         <RuinRiskCard result={ruin} mounted={mounted} />
       </Card>
 
-      <Card
-        title="Wins vs Losses 對照"
-        help="把贏的交易和輸的交易分開,比較平均部位大小/槓桿/R 值——用來找「是不是部位一放大就開始輸」這類系統性差異,不是單純的勝率統計。"
-      >
-        <WinLossComparisonCard result={wl} />
-      </Card>
+      {assetClassMixed ? (
+        <MixedAssetNotice title="Wins vs Losses 對照" />
+      ) : (
+        <Card
+          title="Wins vs Losses 對照"
+          help="把贏的交易和輸的交易分開,比較平均部位大小/槓桿/R 值——用來找「是不是部位一放大就開始輸」這類系統性差異,不是單純的勝率統計。"
+        >
+          <WinLossComparisonCard result={wl} />
+        </Card>
+      )}
 
       <Card
         title="資金費率拖累分析"
@@ -150,20 +160,24 @@ export function PerformanceView({
         <FundingCostCard result={funding} />
       </Card>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Card
-          title="依部位大小分組"
-          help="把交易依部位大小切成 4 個等寬區間,分別看各區間的勝率/平均R/損益。"
-        >
-          <BucketTable buckets={sizeBuckets} label="部位大小" />
-        </Card>
-        <Card
-          title="依槓桿分組"
-          help="把交易依槓桿倍數切成 4 個等寬區間,分別看各區間的勝率/平均R/損益。"
-        >
-          <BucketTable buckets={leverageBuckets} label="槓桿" />
-        </Card>
-      </div>
+      {assetClassMixed ? (
+        <MixedAssetNotice title="依部位大小分組 / 依槓桿分組" />
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <Card
+            title="依部位大小分組"
+            help="把交易依部位大小切成 4 個等寬區間,分別看各區間的勝率/平均R/損益。"
+          >
+            <BucketTable buckets={sizeBuckets} label="部位大小" />
+          </Card>
+          <Card
+            title="依槓桿分組"
+            help="把交易依槓桿倍數切成 4 個等寬區間,分別看各區間的勝率/平均R/損益。"
+          >
+            <BucketTable buckets={leverageBuckets} label="槓桿" />
+          </Card>
+        </div>
+      )}
 
       <Card
         title="依平倉小時分布"
@@ -180,6 +194,15 @@ export function PerformanceView({
         <TopTradesTable title="最佳 10 筆" rows={best} tone="profit" />
         <TopTradesTable title="最差 10 筆" rows={worst} tone="loss" />
       </div>
+    </div>
+  );
+}
+
+function MixedAssetNotice({ title }: { title: string }) {
+  return (
+    <div className="rounded border border-dashed border-border bg-canvas px-4 py-4 text-center text-[0.82rem] text-text-secondary">
+      <span className="font-semibold text-text">{title}</span>
+      ——目前篩選範圍橫跨多種資產類別(例如加密貨幣+期貨),部位大小/槓桿/損益的單位無法直接混算,已停用避免誤導。切換到單一資產類別的模板檢視即可看到。
     </div>
   );
 }

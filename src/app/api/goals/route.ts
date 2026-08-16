@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { getOwnedAccount } from "@/lib/accounts";
 import { prisma } from "@/lib/prisma";
 
 function num(v: unknown): number | null {
@@ -8,11 +9,18 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-export async function GET() {
+// Goal 綁在帳戶模板底下(2026-08-16 起,規劃書 5.5/Q23)——不同模板的規模
+// 與回撤規則不一樣,不能共用全域設定。
+export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
 
-  const goal = await prisma.goal.findUnique({ where: { userId: user.id } });
+  const accountId = request.nextUrl.searchParams.get("accountId");
+  if (!accountId || !(await getOwnedAccount(user.id, accountId))) {
+    return NextResponse.json({ error: "找不到這個帳戶模板" }, { status: 404 });
+  }
+
+  const goal = await prisma.goal.findUnique({ where: { accountId } });
   if (!goal) {
     return NextResponse.json({
       lossLimitMode: "FIXED",
@@ -46,6 +54,11 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "請求格式錯誤" }, { status: 400 });
   }
 
+  const accountId = typeof body.accountId === "string" ? body.accountId : "";
+  if (!accountId || !(await getOwnedAccount(user.id, accountId))) {
+    return NextResponse.json({ error: "找不到這個帳戶模板" }, { status: 404 });
+  }
+
   const mode = body.lossLimitMode === "PERCENT" ? "PERCENT" : "FIXED";
   const data = {
     lossLimitMode: mode as "FIXED" | "PERCENT",
@@ -63,9 +76,9 @@ export async function PUT(request: NextRequest) {
   }
 
   await prisma.goal.upsert({
-    where: { userId: user.id },
+    where: { accountId },
     update: data,
-    create: { userId: user.id, ...data },
+    create: { accountId, ...data },
   });
 
   return NextResponse.json({ ok: true });

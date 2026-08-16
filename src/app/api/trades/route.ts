@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { getOwnedAccount } from "@/lib/accounts";
 import { prisma } from "@/lib/prisma";
 import { calcRMultiple } from "@/lib/r-multiple";
 
@@ -55,6 +56,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "止損價必須是正數" }, { status: 400 });
   }
 
+  // 只有 1 個帳戶模板時自動歸戶,不用使用者選;超過 1 個模板時前端會顯示
+  // 選擇器並帶 accountId 過來,這裡驗證擁有權。
+  let accountId: string | null = null;
+  if (typeof body.accountId === "string" && body.accountId) {
+    const owned = await getOwnedAccount(user.id, body.accountId);
+    if (!owned) {
+      return NextResponse.json({ error: "找不到這個帳戶模板" }, { status: 404 });
+    }
+    accountId = owned.id;
+  } else {
+    const accounts = await prisma.tradingAccount.findMany({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (accounts.length === 1) accountId = accounts[0].id;
+  }
+
   const openedAtRaw = typeof body.openedAt === "string" ? body.openedAt : "";
   const openedAt = openedAtRaw ? new Date(openedAtRaw) : null;
   const exitPrice = requiredNum(body.exitPrice);
@@ -71,6 +89,7 @@ export async function POST(request: NextRequest) {
   const trade = await prisma.trade.create({
     data: {
       userId: user.id,
+      accountId,
       symbol,
       direction: direction as "LONG" | "SHORT",
       entryPrice,

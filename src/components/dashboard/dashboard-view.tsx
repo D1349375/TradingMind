@@ -39,10 +39,12 @@ export function DashboardView({
   trades,
   goals,
   lastSyncedText,
+  assetClassMixed,
 }: {
   trades: NamedTradePoint[];
-  goals: GoalState;
+  goals: GoalState | null;
   lastSyncedText: string;
+  assetClassMixed: boolean;
 }) {
   const [tab, setTab] = useState<DashTab>("overview");
   const [range, setRange] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
@@ -157,7 +159,11 @@ export function DashboardView({
           <CalendarCard trades={trades} />
         </>
       ) : (
-        <PerformanceView trades={filteredTrades} totalCapital={goals.totalCapital} />
+        <PerformanceView
+          trades={filteredTrades}
+          totalCapital={goals?.totalCapital ?? null}
+          assetClassMixed={assetClassMixed}
+        />
       )}
     </>
   );

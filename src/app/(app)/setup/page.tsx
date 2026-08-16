@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getSetupPageData } from "@/lib/page-cache";
+import { resolveAccountScope } from "@/lib/account-filter";
 import { SetupView } from "@/components/analysis/setup-view";
 
 export const metadata: Metadata = {
@@ -9,7 +10,12 @@ export const metadata: Metadata = {
 
 export default async function SetupPage() {
   const user = await getCurrentUser();
-  const { trades, enabledFieldKeys } = await getSetupPageData(user!.id);
+  const scope = await resolveAccountScope(user!.id);
+  const { trades, enabledFieldKeys } = await getSetupPageData(
+    user!.id,
+    scope.accountIds,
+    scope.isFiltered,
+  );
 
   return (
     <div className="px-9 py-8">

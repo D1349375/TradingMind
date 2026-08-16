@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { resolveAccountScope } from "@/lib/account-filter";
 import { TradesView, type TradeDto } from "@/components/trades/trades-view";
 import { AddTradeForm } from "@/components/trades/add-trade-form";
 import { ImportCsvForm } from "@/components/trades/import-csv-form";
@@ -11,12 +12,18 @@ export const metadata: Metadata = {
 
 export default async function TradesPage() {
   const user = await getCurrentUser();
+  const scope = await resolveAccountScope(user!.id);
 
   // 目前一次載入全部。筆數變多之後要改成分頁或虛擬捲動,
   // 現階段(數十筆)這樣最單純。
   const [rows, fieldDefs, setups, rules] = await Promise.all([
     prisma.trade.findMany({
-      where: { userId: user!.id },
+      // 沒有主動篩選時不加 accountId 條件,才會包含模板被刪除後留下的
+      // 「未分類」交易(accountId=null)——見 lib/page-cache.ts 開頭說明。
+      where: {
+        userId: user!.id,
+        accountId: scope.isFiltered ? { in: scope.accountIds } : undefined,
+      },
       orderBy: { closedAt: "desc" },
       include: {
         customValues: { select: { fieldId: true, value: true } },

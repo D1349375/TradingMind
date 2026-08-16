@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 // 對應 prototype 設定頁的「目標設定」分頁。
 // 每日虧損上限支援固定金額 / 資金比例雙模式(2026-08-11 對話定案)。
+// 2026-08-16 起 Goal 綁在帳戶模板底下,先選要設定哪一個模板(單模板時隱藏)。
 
 type Goals = {
   lossLimitMode: "FIXED" | "PERCENT";
@@ -12,6 +13,8 @@ type Goals = {
   totalCapital: number | null;
   profitTargetAmount: number | null;
 };
+
+type AccountOption = { id: string; label: string };
 
 const EMPTY: Goals = {
   lossLimitMode: "FIXED",
@@ -22,6 +25,8 @@ const EMPTY: Goals = {
 };
 
 export function GoalSettings() {
+  const [accounts, setAccounts] = useState<AccountOption[] | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [goals, setGoals] = useState<Goals | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -30,13 +35,27 @@ export function GoalSettings() {
   const [balanceNotice, setBalanceNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/goals")
+    fetch("/api/accounts")
+      .then((r) => r.json())
+      .then((d) => {
+        const list: AccountOption[] = d.accounts ?? [];
+        setAccounts(list);
+        if (list.length > 0) setAccountId(list[0].id);
+      })
+      .catch(() => setAccounts([]));
+  }, []);
+
+  useEffect(() => {
+    if (!accountId) return;
+    setGoals(null);
+    fetch(`/api/goals?accountId=${accountId}`)
       .then((r) => r.json())
       .then((d) => setGoals({ ...EMPTY, ...d }))
       .catch(() => setGoals(EMPTY));
-  }, []);
+  }, [accountId]);
 
   async function save(next: Goals) {
+    if (!accountId) return;
     setGoals(next);
     setSaving(true);
     setSaved(false);
@@ -44,7 +63,7 @@ export function GoalSettings() {
     const res = await fetch("/api/goals", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(next),
+      body: JSON.stringify({ accountId, ...next }),
     });
     setSaving(false);
     if (!res.ok) {
@@ -56,10 +75,11 @@ export function GoalSettings() {
   }
 
   async function fetchFromBybit() {
+    if (!accountId) return;
     setFetchingBalance(true);
     setBalanceNotice(null);
     setError(null);
-    const res = await fetch("/api/bybit/balance");
+    const res = await fetch(`/api/bybit/balance?accountId=${accountId}`);
     const d = await res.json();
     setFetchingBalance(false);
     if (!res.ok) {
@@ -75,7 +95,7 @@ export function GoalSettings() {
     );
   }
 
-  if (!goals) {
+  if (!accounts || !goals) {
     return (
       <div className="rounded border border-border bg-surface px-5 py-8 text-center text-[0.85rem] text-text-secondary">
         讀取設定…
@@ -86,6 +106,8 @@ export function GoalSettings() {
   const isPercent = goals.lossLimitMode === "PERCENT";
   const inputClass =
     "w-40 rounded border border-border bg-canvas px-2.5 py-1.5 text-right text-[0.87rem] text-text outline-none placeholder:text-text-tertiary focus:border-accent";
+  const selectClass =
+    "w-full rounded border border-border bg-canvas px-2.5 py-1.5 text-[0.87rem] text-text outline-none focus:border-accent";
 
   const effectiveLimit = isPercent
     ? (goals.totalCapital ?? 0) * ((goals.dailyLossPercent ?? 0) / 100)
@@ -94,6 +116,25 @@ export function GoalSettings() {
   return (
     <>
       <div className="rounded border border-border bg-surface px-5 py-5">
+        {accounts.length > 1 && (
+          <div className="mb-4">
+            <label className="mb-1.5 block text-[0.8rem] font-semibold text-text-secondary">
+              帳戶模板
+            </label>
+            <select
+              className={selectClass}
+              value={accountId ?? ""}
+              onChange={(e) => setAccountId(e.target.value)}
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-[0.84rem] font-semibold text-text-secondary">
             風控上限(驅動 Dashboard 的目標與風控量表)

@@ -39,9 +39,12 @@ function toDecimalOrZero(value: string | undefined): Prisma.Decimal {
   return toDecimal(value) ?? new Prisma.Decimal(0);
 }
 
-export async function syncBybitTrades(userId: string): Promise<SyncResult> {
+export async function syncBybitTrades(
+  accountId: string,
+  userId: string,
+): Promise<SyncResult> {
   const conn = await prisma.bybitConnection.findUnique({
-    where: { userId },
+    where: { accountId },
   });
   if (!conn) {
     throw new Error("尚未連接 Bybit,請先到設定頁完成連線");
@@ -92,6 +95,7 @@ export async function syncBybitTrades(userId: string): Promise<SyncResult> {
     await prisma.trade.create({
       data: {
         userId,
+        accountId,
         bybitOrderId: item.orderId,
         source: "BYBIT_SYNC",
         symbol: item.symbol,
@@ -113,7 +117,7 @@ export async function syncBybitTrades(userId: string): Promise<SyncResult> {
   }
 
   await prisma.bybitConnection.update({
-    where: { userId },
+    where: { accountId },
     data: { lastSyncedAt: new Date() },
   });
 
