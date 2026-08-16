@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type AccountKind = "LIVE" | "DEMO" | "PROP_FIRM";
 type AssetClass = "CRYPTO" | "FUTURES" | "STOCK" | "FOREX" | "OPTIONS";
@@ -31,6 +32,7 @@ const ASSET_CLASS_LABEL: Record<AssetClass, string> = {
 };
 
 export function AccountTemplates() {
+  const router = useRouter();
   const [accounts, setAccounts] = useState<AccountTemplate[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +63,7 @@ export function AccountTemplates() {
     const res = await fetch(`/api/accounts/${a.id}`, { method: "DELETE" });
     if (!res.ok) setError((await res.json()).error ?? "刪除失敗");
     await load();
+    router.refresh();
     setBusy(false);
   }
 
@@ -116,6 +119,7 @@ export function AccountTemplates() {
                     }
                     setEditingId(null);
                     await load();
+                    router.refresh();
                   }}
                 />
               </li>
@@ -183,6 +187,7 @@ export function AccountTemplates() {
                 }
                 setCreating(false);
                 await load();
+                router.refresh();
               }}
             />
           ) : (
