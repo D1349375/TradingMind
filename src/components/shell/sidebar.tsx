@@ -142,6 +142,16 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
           </>,
         ),
       },
+      {
+        label: "AI 問答",
+        href: "/chat",
+        icon: icon(
+          <>
+            <path d="M3 5h14v8H8l-4 3v-3H3z" />
+            <path d="M7 8h6M7 10.5h3" />
+          </>,
+        ),
+      },
     ],
   },
   {
@@ -290,7 +300,7 @@ export function Sidebar({
   return (
     <aside
       style={{ width }}
-      className={`relative flex min-w-0 shrink-0 flex-col border-r border-border bg-canvas p-[14px_10px] text-[14.5px] ${
+      className={`no-print relative flex min-w-0 shrink-0 flex-col border-r border-border bg-canvas p-[14px_10px] text-[14.5px] ${
         dragging ? "" : "transition-[width] duration-150"
       }`}
     >

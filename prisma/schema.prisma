@@ -41,6 +41,7 @@ model User {
   creditTxns        CreditTransaction[]
   creditPurchases   CreditPurchase[]
   periodReports     PeriodReport[]
+  chatConversations ChatConversation[]
 }
 
 enum SubscriptionTier {
@@ -383,4 +384,44 @@ model PeriodReport {
 enum PeriodType {
   WEEK
   MONTH
+}
+
+// 開放式人格問答(TradeMind_開放式人格問答_技術設計.md)。設計上只做唯讀
+// 工具存取(見該文件第二/四節)——這裡的資料模型只存對話紀錄本身,不涉及
+// 任何寫入使用者其他資料的操作。
+model ChatConversation {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  persona   String // ict/tjr/emperorbtc,同一組人格框架
+  title     String? // 從第一則使用者訊息截斷產生,列表用
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id             String           @id @default(uuid())
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           ChatRole
+  content        String           @db.Text
+  // 記錄這則回覆呼叫過哪些讀取工具(工具名稱+參數,不含實際回傳的資料內容),
+  // 給使用者/自己之後除錯時知道 AI 讀了什麼範圍的資料——不是必要功能,
+  // 但透明度符合這個 app 一貫「資料來源要講清楚」的原則。
+  toolCalls      Json?
+  // 只有 ASSISTANT 訊息才會有值(使用者發問不扣款,AI 回覆才計費,
+  // 理由同其他 AI 功能:只有真的產出結果才收費)
+  creditsCost    Int?
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
 }
