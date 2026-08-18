@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
   const scope = await resolveAccountScope(user.id);
   const accountId = tradeAccountFilter(scope.accountIds, scope.isFiltered);
-  const prior = getPriorRange(periodType, periodStart, periodEnd);
+  const prior = getPriorRange(periodType, periodStart);
 
   const tradeSelect = {
     closedAt: true,
@@ -172,9 +172,11 @@ export async function POST(request: NextRequest) {
 
   let result;
   try {
-    // dailySeries 只給詳情頁畫圖用,不送進 LLM——傳完整 snapshot 進去會
-    // 讓 prompt 白白變胖,LLM 也用不到逐日明細。
-    const { dailySeries: _dailySeries, ...statsForLLM } = statsSnapshot;
+    // dailySeries/crossAnalysisTrades/enabledFieldKeys/traderScore 都只給
+    // 詳情頁UI用,不送進LLM——傳完整snapshot會讓prompt白白變胖(尤其
+    // crossAnalysisTrades帶了逐筆交易的反思筆記文字),LLM也用不到這些。
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { dailySeries, crossAnalysisTrades, enabledFieldKeys, traderScore, ...statsForLLM } = statsSnapshot;
     result = await runPeriodReport(persona, statsForLLM);
   } catch (err) {
     if (err instanceof PeriodReportNotConfiguredError) {

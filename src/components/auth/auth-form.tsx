@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { Logomark } from "@/components/brand/logomark";
 
 type Mode = "login" | "signup";
 
@@ -104,8 +105,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
   return (
     <div className="w-full max-w-[380px]">
       <div className="mb-7 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded bg-accent text-xs font-bold text-white">
-          T
+        <span className="flex h-6 w-6 items-center justify-center rounded bg-accent text-white">
+          <Logomark className="h-3.5 w-3.5" />
         </span>
         <span className="text-[0.95rem] font-semibold">TradeMind</span>
       </div>

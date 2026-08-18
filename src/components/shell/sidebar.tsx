@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTodayLossDanger, type GoalForAlert } from "@/lib/notifications";
 import { AccountFilterSwitcher } from "@/components/shell/account-filter-switcher";
+import { Logomark } from "@/components/brand/logomark";
 
 // 對應 prototype/index.html 的側邊欄。
 // 尺寸一律固定 px(design.md 第三節:介面外殼不隨內容字級縮放)。
@@ -313,11 +314,11 @@ export function Sidebar({
           type="button"
           onClick={collapsed ? toggleCollapsed : undefined}
           title={collapsed ? "展開側邊欄" : undefined}
-          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-accent text-[12px] font-bold text-white ${
+          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-accent text-white ${
             collapsed ? "cursor-pointer" : "cursor-default"
           }`}
         >
-          T
+          <Logomark className="h-3.5 w-3.5" />
         </button>
         {!collapsed && <span className="flex-1 truncate">TradeMind</span>}
         {!collapsed && (

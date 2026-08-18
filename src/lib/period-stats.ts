@@ -8,7 +8,6 @@ import {
   riskAdjustedMetrics,
   computeTraderScore,
   type Summary,
-  type TradePoint,
   type SetupRankRow,
   type WinLossComparison,
   type PerfBucket,
@@ -115,13 +114,13 @@ export function computeTrend(current: Summary, prior: Summary | null): Trend {
 }
 
 // 上一期的起訖時間——週:再往前 7 天;月:上一個日曆月(月初到月底,天數
-// 用 Date 的月份運算處理,不手算天數)。輸入的 periodStart/periodEnd 已經
-// 是使用者瀏覽器端算好轉成的 ISO 時間(見產生報告按鈕元件),這裡純粹是
-// 對兩個 Date 做算術,不涉及時區猜測。
+// 用 Date 的月份運算處理,不手算天數)。只需要 periodStart 就能算出來
+// (上一期的終點定義為這一期的起點,不用參照這一期的終點),輸入的
+// periodStart 已經是使用者瀏覽器端算好轉成的 ISO 時間(見產生報告按鈕
+// 元件),這裡純粹是對 Date 做算術,不涉及時區猜測。
 export function getPriorRange(
   periodType: "WEEK" | "MONTH",
   periodStart: Date,
-  periodEnd: Date,
 ): { start: Date; end: Date } {
   if (periodType === "WEEK") {
     const ms = 7 * 24 * 60 * 60 * 1000;
