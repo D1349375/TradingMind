@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isPersonaKey } from "@/lib/personas";
@@ -9,7 +10,7 @@ import {
 import { buildPeriodStats, getPriorRange, type PeriodTrade } from "@/lib/period-stats";
 import { computeBehaviorAlerts } from "@/lib/behavior-detection";
 import { DETECTION_DEFS } from "@/lib/behavior-presets";
-import { resolveAccountScope } from "@/lib/account-filter";
+import { resolveAccountScope, resolveAssetClassMix } from "@/lib/account-filter";
 import { tradeAccountFilter, resolveGoalState } from "@/lib/page-cache";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -93,10 +94,21 @@ export async function POST(request: NextRequest) {
     ruleChecks: { select: { checked: true } },
   } as const;
 
-  const [currentRows, priorRows, behaviorRows, goals] = await Promise.all([
+  // 交叉分析(components/analysis/setup-view.tsx 的 CrossAnalysisSection)
+  // 要用到的欄位比一般統計多(商品/自訂欄位值),只有這一期(current)要凍結
+  // 進快照,上一期(prior)只拿來算趨勢對照,不需要多查這些欄位。
+  const currentSelect = {
+    ...tradeSelect,
+    symbol: true,
+    customValues: {
+      select: { value: true, field: { select: { key: true } } },
+    },
+  } as const;
+
+  const [currentRows, priorRows, behaviorRows, goals, assetClassMix, fieldDefs] = await Promise.all([
     prisma.trade.findMany({
       where: { userId: user.id, accountId, closedAt: { gte: periodStart, lte: periodEnd } },
-      select: tradeSelect,
+      select: currentSelect,
     }),
     prisma.trade.findMany({
       where: { userId: user.id, accountId, closedAt: { gte: prior.start, lt: prior.end } },
@@ -104,10 +116,21 @@ export async function POST(request: NextRequest) {
     }),
     prisma.behaviorDetectionSetting.findMany({ where: { userId: user.id } }),
     prisma.goal.findMany({ where: { accountId: { in: scope.accountIds } } }),
+    resolveAssetClassMix(scope.accountIds),
+    prisma.customFieldDefinition.findMany({ where: { userId: user.id }, select: { key: true } }),
   ]);
 
   const currentTrades = currentRows.map(toTradeRow);
   const priorTrades = priorRows.map(toTradeRow);
+  const crossAnalysisTrades = currentRows.map((t) => ({
+    symbol: t.symbol,
+    closedAt: t.closedAt?.toISOString() ?? null,
+    realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),
+    rMultiple: t.rMultiple === null ? null : Number(t.rMultiple),
+    setupName: t.setup?.name ?? null,
+    fieldsByKey: Object.fromEntries(t.customValues.map((v) => [v.field.key, v.value])),
+  }));
+  const enabledFieldKeys = fieldDefs.map((f) => f.key);
 
   const byKind = new Map(behaviorRows.map((r) => [r.kind, r]));
   const behaviorSettings = DETECTION_DEFS.map((def) => {
@@ -131,6 +154,10 @@ export async function POST(request: NextRequest) {
     priorTrades,
     behaviorAlerts,
     behaviorLabelByKind,
+    assetClassMixed: assetClassMix.mixed,
+    totalCapital,
+    crossAnalysisTrades,
+    enabledFieldKeys,
   });
 
   // 1. 預檢查額度,先擋掉沒錢的請求,不浪費一次 LLM 呼叫
@@ -166,7 +193,11 @@ export async function POST(request: NextRequest) {
         periodStart,
         periodEnd,
         persona,
-        statsSnapshot,
+        // crossAnalysisTrades.fieldsByKey 型別是 Record<string, unknown>
+        // (自訂欄位值本來就是未知形狀的 JSON),Prisma 的 InputJsonValue
+        // 要求明確排除 unknown——用跟讀取端(normalizePeriodStatsSnapshot
+        // 呼叫處)同一種 unknown 中介轉型,不逐欄位窄化型別。
+        statsSnapshot: statsSnapshot as unknown as Prisma.InputJsonValue,
         result,
       },
     }),

@@ -200,16 +200,11 @@ export function SetupView({
   const [dim, setDim] = useState<string>("symbol");
   const [setupSort, setSetupSort] = useState<RowSortKey>("pnl");
   const [dimSort, setDimSort] = useState<RowSortKey>("pnl");
-  const [crossDim1, setCrossDim1] = useState<string>("symbol");
-  const [crossDim2, setCrossDim2] = useState<string>("weekday");
-  const [crossMetric, setCrossMetric] = useState<"pnl" | "winRate" | "avgR" | "n">("pnl");
   const DIMENSIONS = useMemo(
     () => buildDimensions(new Set(enabledFieldKeys)),
     [enabledFieldKeys],
   );
   const active = DIMENSIONS.find((d) => d.key === dim) ?? DIMENSIONS[0];
-  const crossActive1 = DIMENSIONS.find((d) => d.key === crossDim1) ?? DIMENSIONS[0];
-  const crossActive2 = DIMENSIONS.find((d) => d.key === crossDim2) ?? DIMENSIONS[1] ?? DIMENSIONS[0];
 
   const setupRows = useMemo(
     () => sortRows(aggregate(trades, (t) => t.setupName), setupSort),
@@ -225,13 +220,6 @@ export function SetupView({
         ? sortRows(aggregate(trades, active.keyOf), effectiveDimSort, dimNaturalOrder)
         : [],
     [trades, active, effectiveDimSort, dimNaturalOrder],
-  );
-  const crossMatrix = useMemo(
-    () =>
-      crossActive1.keyOf && crossActive2.keyOf
-        ? aggregate2D(trades, crossActive1.keyOf, crossActive2.keyOf)
-        : null,
-    [trades, crossActive1, crossActive2],
   );
 
   if (trades.length === 0) {
@@ -398,111 +386,144 @@ export function SetupView({
         )}
       </section>
 
-      <section className="mt-5 rounded border border-border bg-surface px-4 py-4">
-        <div className="mb-3 flex items-center gap-1.5">
-          <h2 className="text-[0.82rem] font-semibold text-text-secondary">
-            交叉分析
-          </h2>
-          <HelpTooltip>
-            同時用兩個維度分組,找單一維度看不出來、兩個交叉才浮現的模式(例如「商品 × 星期幾」)。格子樣本數通常比單維度表少很多,數字少的格子只能參考。
-          </HelpTooltip>
-        </div>
-
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-[0.8rem]">
-          <span className="text-text-secondary">列</span>
-          <DimensionSelect
-            dimensions={DIMENSIONS}
-            value={crossDim1}
-            onChange={setCrossDim1}
-          />
-          <span className="text-text-secondary">× 欄</span>
-          <DimensionSelect
-            dimensions={DIMENSIONS}
-            value={crossDim2}
-            onChange={setCrossDim2}
-          />
-          <span className="ml-2 text-text-secondary">顯示</span>
-          <div className="flex overflow-hidden rounded border border-border">
-            {(
-              [
-                { key: "pnl", label: "累計損益" },
-                { key: "winRate", label: "勝率" },
-                { key: "avgR", label: "平均R" },
-                { key: "n", label: "交易數" },
-              ] as const
-            ).map((m) => (
-              <button
-                key={m.key}
-                type="button"
-                onClick={() => setCrossMetric(m.key)}
-                aria-pressed={crossMetric === m.key}
-                className={`px-2.5 py-1 text-[0.76rem] ${
-                  crossMetric === m.key
-                    ? "bg-accent-soft font-semibold text-accent"
-                    : "bg-canvas text-text-secondary hover:text-text"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {crossDim1 === crossDim2 ? (
-          <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center text-[0.82rem] text-text-secondary">
-            列跟欄選了同一個維度,交叉沒有意義,換一個看看。
-          </div>
-        ) : !crossActive1.available || !crossActive2.available ? (
-          <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center">
-            <div className="mb-1 text-[0.85rem] font-semibold text-text-secondary">
-              {!crossActive1.available ? crossActive1.label : crossActive2.label}目前無法分析
-            </div>
-            <p className="mx-auto max-w-[52ch] text-[0.8rem] leading-relaxed text-text-secondary">
-              {!crossActive1.available ? crossActive1.missing : crossActive2.missing}
-            </p>
-          </div>
-        ) : !crossMatrix || crossMatrix.rowKeys.length === 0 ? (
-          <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center text-[0.82rem] text-text-secondary">
-            這兩個維度目前沒有交集的資料。
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[0.85rem]">
-              <thead>
-                <tr>
-                  <th className="border-b border-border px-2.5 py-1.5 text-left text-[0.75rem] font-semibold text-text-secondary">
-                    {crossActive1.label} \ {crossActive2.label}
-                  </th>
-                  {crossMatrix.colKeys.map((c) => (
-                    <th
-                      key={c}
-                      className="border-b border-border px-2.5 py-1.5 text-right text-[0.75rem] font-semibold text-text-secondary"
-                    >
-                      {c}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {crossMatrix.rowKeys.map((r) => (
-                  <tr key={r}>
-                    <td className="whitespace-nowrap border-b border-border px-2.5 py-1.5 font-semibold">
-                      {r}
-                    </td>
-                    {crossMatrix.colKeys.map((c) => {
-                      const cell = crossMatrix.cellOf(r, c);
-                      return (
-                        <CrossCell key={c} cell={cell} metric={crossMetric} />
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <CrossAnalysisSection trades={trades} enabledFieldKeys={enabledFieldKeys} />
     </>
+  );
+}
+
+// 抽成獨立元件是因為週期回顧頁(period-review/[id]/page.tsx)也要用同一套
+// 二維交叉分析,但吃的是「生成當下凍結的快照」資料而不是即時交易列表——
+// 呼叫端只要餵 trades/enabledFieldKeys 就好,不用管 SetupView 其他部分
+// (Setup排行/依維度比較)的狀態。
+export function CrossAnalysisSection({
+  trades,
+  enabledFieldKeys,
+}: {
+  trades: AnalysisTrade[];
+  enabledFieldKeys: string[];
+}) {
+  const [crossDim1, setCrossDim1] = useState<string>("symbol");
+  const [crossDim2, setCrossDim2] = useState<string>("weekday");
+  const [crossMetric, setCrossMetric] = useState<"pnl" | "winRate" | "avgR" | "n">("pnl");
+  const DIMENSIONS = useMemo(
+    () => buildDimensions(new Set(enabledFieldKeys)),
+    [enabledFieldKeys],
+  );
+  const crossActive1 = DIMENSIONS.find((d) => d.key === crossDim1) ?? DIMENSIONS[0];
+  const crossActive2 = DIMENSIONS.find((d) => d.key === crossDim2) ?? DIMENSIONS[1] ?? DIMENSIONS[0];
+  const crossMatrix = useMemo(
+    () =>
+      crossActive1.keyOf && crossActive2.keyOf
+        ? aggregate2D(trades, crossActive1.keyOf, crossActive2.keyOf)
+        : null,
+    [trades, crossActive1, crossActive2],
+  );
+
+  return (
+    <section className="mt-5 rounded border border-border bg-surface px-4 py-4">
+      <div className="mb-3 flex items-center gap-1.5">
+        <h2 className="text-[0.82rem] font-semibold text-text-secondary">
+          交叉分析
+        </h2>
+        <HelpTooltip>
+          同時用兩個維度分組,找單一維度看不出來、兩個交叉才浮現的模式(例如「商品 × 星期幾」)。格子樣本數通常比單維度表少很多,數字少的格子只能參考。
+        </HelpTooltip>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-[0.8rem]">
+        <span className="text-text-secondary">列</span>
+        <DimensionSelect
+          dimensions={DIMENSIONS}
+          value={crossDim1}
+          onChange={setCrossDim1}
+        />
+        <span className="text-text-secondary">× 欄</span>
+        <DimensionSelect
+          dimensions={DIMENSIONS}
+          value={crossDim2}
+          onChange={setCrossDim2}
+        />
+        <span className="ml-2 text-text-secondary">顯示</span>
+        <div className="flex overflow-hidden rounded border border-border">
+          {(
+            [
+              { key: "pnl", label: "累計損益" },
+              { key: "winRate", label: "勝率" },
+              { key: "avgR", label: "平均R" },
+              { key: "n", label: "交易數" },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setCrossMetric(m.key)}
+              aria-pressed={crossMetric === m.key}
+              className={`px-2.5 py-1 text-[0.76rem] ${
+                crossMetric === m.key
+                  ? "bg-accent-soft font-semibold text-accent"
+                  : "bg-canvas text-text-secondary hover:text-text"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {crossDim1 === crossDim2 ? (
+        <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center text-[0.82rem] text-text-secondary">
+          列跟欄選了同一個維度,交叉沒有意義,換一個看看。
+        </div>
+      ) : !crossActive1.available || !crossActive2.available ? (
+        <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center">
+          <div className="mb-1 text-[0.85rem] font-semibold text-text-secondary">
+            {!crossActive1.available ? crossActive1.label : crossActive2.label}目前無法分析
+          </div>
+          <p className="mx-auto max-w-[52ch] text-[0.8rem] leading-relaxed text-text-secondary">
+            {!crossActive1.available ? crossActive1.missing : crossActive2.missing}
+          </p>
+        </div>
+      ) : !crossMatrix || crossMatrix.rowKeys.length === 0 ? (
+        <div className="rounded border border-dashed border-border bg-canvas px-4 py-6 text-center text-[0.82rem] text-text-secondary">
+          這兩個維度目前沒有交集的資料。
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[0.85rem]">
+            <thead>
+              <tr>
+                <th className="border-b border-border px-2.5 py-1.5 text-left text-[0.75rem] font-semibold text-text-secondary">
+                  {crossActive1.label} \ {crossActive2.label}
+                </th>
+                {crossMatrix.colKeys.map((c) => (
+                  <th
+                    key={c}
+                    className="border-b border-border px-2.5 py-1.5 text-right text-[0.75rem] font-semibold text-text-secondary"
+                  >
+                    {c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {crossMatrix.rowKeys.map((r) => (
+                <tr key={r}>
+                  <td className="whitespace-nowrap border-b border-border px-2.5 py-1.5 font-semibold">
+                    {r}
+                  </td>
+                  {crossMatrix.colKeys.map((c) => {
+                    const cell = crossMatrix.cellOf(r, c);
+                    return (
+                      <CrossCell key={c} cell={cell} metric={crossMetric} />
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 

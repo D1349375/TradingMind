@@ -162,3 +162,43 @@ body {
     font-family: var(--font-mono);
   }
 }
+
+/* ============ 列印/匯出PDF(週期回顧報告) ============
+   使用者用瀏覽器原生「列印→另存為PDF」匯出報告,不用額外接 Puppeteer 之類
+   的伺服器端渲染(Netlify serverless function 對這類重量級無頭瀏覽器套件
+   支援度差,容易踩大小/冷啟動限制)。不管目前是深色還是淺色主題,列印時
+   一律強制用淺色 token——深色模式的文字/背景色印在白紙上會變成幾乎看不見。 */
+@media print {
+  :root,
+  html[data-theme="dark"],
+  html:not([data-theme="light"]) {
+    --canvas: #ffffff;
+    --surface: #ffffff;
+    --border: #c9c4b8;
+    --text: #37352f;
+    --text-secondary: #5c5a54;
+    --text-tertiary: #83807a;
+    --accent: #2f6fed;
+    --accent-soft: #eaf0fd;
+    --profit: #0f7a56;
+    --loss: #b83c30;
+    --profit-bg: #eaf3ef;
+    --loss-bg: #faeeec;
+    --profit-bg-strong: #dbe7e0;
+    --loss-bg-strong: #efe0dc;
+    --warning: #96640d;
+    --warning-bg: #f7efe0;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  @page {
+    margin: 1.4cm;
+  }
+}

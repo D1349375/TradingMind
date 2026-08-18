@@ -23,7 +23,7 @@ export default async function AppLayout({
     await getSidebarData(user.id, scope.accountIds, scope.isFiltered);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden print:h-auto print:overflow-visible">
       <Sidebar
         email={user.email}
         credits={credits}
@@ -32,7 +32,12 @@ export default async function AppLayout({
         goal={goal}
         accountFilter={scope}
       />
-      <main className="flex-1 overflow-y-auto bg-canvas">{children}</main>
+      {/* h-screen+overflow-hidden 在螢幕上是為了讓側邊欄固定、內容區自己捲動,
+          但列印時會把內容裁切成只有一個螢幕高度——print: 變體解除這個限制,
+          讓瀏覽器的列印分頁邏輯接手。 */}
+      <main className="flex-1 overflow-y-auto bg-canvas print:h-auto print:overflow-visible">
+        {children}
+      </main>
     </div>
   );
 }

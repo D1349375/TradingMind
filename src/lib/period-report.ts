@@ -35,6 +35,19 @@ const TASK_INSTRUCTIONS = `你是 TradeMind「週期回顧」的 persona 執行�
   沒有已標記 Setup 的交易,誠實反映、列進 data_gaps,不要編造。
 - signature_line 要維持這個人格的表達 DNA(語氣/用詞/口頭禪),但內容必須
   掛鉤這期的實際數據,不能是可以套在任何期間上的通用金句。
+- narrative 跟 next_action 必須至少引用一次 winLoss(贏輸交易在部位/槓桿/R
+  上有沒有系統性差異)、hourBreakdown(哪個時段特別好或特別差)、
+  riskAdjusted(可用時的 Sharpe/Sortino/Calmar 語氣化解讀)這幾類數據裡的
+  具體數字——不是每個都要提到,但整份報告不能只停留在總損益/勝率這種
+  StatGrid 就看得到的表層數字,要挖出「使用者自己盯著數字表格也不會馬上
+  看出來」的具體模式,這是週期回顧跟使用者自己選日期範圍看績效分析頁最大
+  的差異所在。riskAdjusted.available 為 false、positionSizeBuckets/
+  leverageBuckets 為空陣列時代表樣本不足或不適用,誠實說明,不要編造數字。
+- assetClassMixed 為 true 時,絕對不要引用 winLoss 裡的 avgPositionSize/
+  avgLeverage,也不要提 positionSizeBuckets/leverageBuckets(此時一定是
+  空陣列)——這代表使用者合併檢視了資產類別不同的多個帳戶模板,部位大小
+  跟槓桿的單位無法直接比較,講了就是誤導。winLoss 裡的 win.n/loss.n/avgR
+  是單位無關的正規化數字,即使 assetClassMixed 為 true 仍然可以誠實引用。
 
 欄位語意:
 - period_summary:純數字摘要,不帶評價,≤80字
@@ -163,4 +176,21 @@ export async function runPeriodReport(
     throw new Error("LLM 回應格式不符預期,找不到文字內容");
   }
   return parsePeriodReportJson(text);
+}
+
+// 補齊舊紀錄的 dataGaps 欄位(2026-08-17 改用 structured outputs 前,
+// dataGaps 允許是 null;之後固定是陣列)。理由同 period-stats.ts 的
+// normalizePeriodStatsSnapshot,兩邊資料庫共用,舊紀錄要能安全顯示。
+export function normalizePeriodReportResult(
+  raw: Partial<PeriodReportResult>,
+): PeriodReportResult {
+  return {
+    periodSummary: raw.periodSummary ?? "",
+    trend: raw.trend ?? "NO_PRIOR_DATA",
+    keyModelApplied: raw.keyModelApplied ?? "",
+    narrative: raw.narrative ?? "",
+    nextAction: raw.nextAction ?? "",
+    signatureLine: raw.signatureLine ?? "",
+    dataGaps: raw.dataGaps ?? [],
+  };
 }

@@ -142,16 +142,12 @@ export function PerformanceView({
         <RuinRiskCard result={ruin} mounted={mounted} />
       </Card>
 
-      {assetClassMixed ? (
-        <MixedAssetNotice title="Wins vs Losses 對照" />
-      ) : (
-        <Card
-          title="Wins vs Losses 對照"
-          help="把贏的交易和輸的交易分開,比較平均部位大小/槓桿/R 值——用來找「是不是部位一放大就開始輸」這類系統性差異,不是單純的勝率統計。"
-        >
-          <WinLossComparisonCard result={wl} />
-        </Card>
-      )}
+      <Card
+        title="Wins vs Losses 對照"
+        help="把贏的交易和輸的交易分開,比較筆數/平均R(資產類別混合時,部位大小/槓桿單位無法比較會略過)——用來找「是不是部位一放大就開始輸」這類系統性差異,不是單純的勝率統計。"
+      >
+        <WinLossComparisonCard result={wl} hideUnitSpecific={assetClassMixed} />
+      </Card>
 
       <Card
         title="資金費率拖累分析"
@@ -198,7 +194,7 @@ export function PerformanceView({
   );
 }
 
-function MixedAssetNotice({ title }: { title: string }) {
+export function MixedAssetNotice({ title }: { title: string }) {
   return (
     <div className="rounded border border-dashed border-border bg-canvas px-4 py-4 text-center text-[0.82rem] text-text-secondary">
       <span className="font-semibold text-text">{title}</span>
@@ -227,7 +223,7 @@ function Card({
   );
 }
 
-function RiskMetricsCard({
+export function RiskMetricsCard({
   result,
   mounted,
 }: {
@@ -272,8 +268,17 @@ function RiskMetricsCard({
   );
 }
 
-function WinLossComparisonCard({ result }: { result: ReturnType<typeof winLossComparison> }) {
-  const rows: { label: string; win: number | null; loss: number | null; unit: string; decimals: number }[] = [
+export function WinLossComparisonCard({
+  result,
+  hideUnitSpecific,
+}: {
+  result: ReturnType<typeof winLossComparison>;
+  // 資產類別混合檢視時,部位大小/槓桿的「單位」無法跨資產比較(見
+  // account-filter.ts 的 resolveAssetClassMix),但筆數/平均R是單位無關
+  // 的正規化數字,混合檢視時仍然誠實可比,不需要整卡隱藏。
+  hideUnitSpecific?: boolean;
+}) {
+  const allRows: { label: string; win: number | null; loss: number | null; unit: string; decimals: number; unitSpecific?: boolean }[] = [
     { label: "筆數", win: result.win.n, loss: result.loss.n, unit: "", decimals: 0 },
     {
       label: "平均部位大小",
@@ -281,6 +286,7 @@ function WinLossComparisonCard({ result }: { result: ReturnType<typeof winLossCo
       loss: result.loss.avgPositionSize,
       unit: "",
       decimals: 2,
+      unitSpecific: true,
     },
     {
       label: "平均槓桿",
@@ -288,14 +294,17 @@ function WinLossComparisonCard({ result }: { result: ReturnType<typeof winLossCo
       loss: result.loss.avgLeverage,
       unit: "x",
       decimals: 1,
+      unitSpecific: true,
     },
     { label: "平均 R", win: result.win.avgR, loss: result.loss.avgR, unit: "R", decimals: 2 },
   ];
+  const rows = hideUnitSpecific ? allRows.filter((r) => !r.unitSpecific) : allRows;
   if (result.win.n === 0 && result.loss.n === 0) {
     return <p className="text-[0.82rem] text-text-secondary">還沒有已平倉交易。</p>;
   }
   return (
-    <table className="w-full border-collapse text-[0.85rem]">
+    <>
+      <table className="w-full border-collapse text-[0.85rem]">
       <thead>
         <tr>
           {["", "贏的交易", "輸的交易"].map((h, i) => (
@@ -323,7 +332,13 @@ function WinLossComparisonCard({ result }: { result: ReturnType<typeof winLossCo
           </tr>
         ))}
       </tbody>
-    </table>
+      </table>
+      {hideUnitSpecific && (
+        <p className="mt-2 text-[0.72rem] text-text-tertiary">
+          目前篩選範圍橫跨多種資產類別,平均部位大小/平均槓桿的單位無法直接比較,已略過只顯示可跨資產比較的欄位。
+        </p>
+      )}
+    </>
   );
 }
 
@@ -364,7 +379,7 @@ function FundingCostCard({ result }: { result: ReturnType<typeof summarizeFundin
   );
 }
 
-function BucketTable({ buckets, label }: { buckets: PerfBucket[]; label: string }) {
+export function BucketTable({ buckets, label }: { buckets: PerfBucket[]; label: string }) {
   if (buckets.length === 0) {
     return (
       <p className="text-[0.82rem] text-text-secondary">
@@ -410,7 +425,7 @@ function BucketTable({ buckets, label }: { buckets: PerfBucket[]; label: string 
   );
 }
 
-function HourlyTable({ buckets }: { buckets: ReturnType<typeof hourOfDayBreakdown> }) {
+export function HourlyTable({ buckets }: { buckets: ReturnType<typeof hourOfDayBreakdown> }) {
   if (buckets.length === 0) {
     return <p className="text-[0.82rem] text-text-secondary">還沒有已平倉交易。</p>;
   }

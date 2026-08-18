@@ -27,23 +27,15 @@ export function ReportCard({
   return (
     <div className="space-y-3">
       <div className="rounded border border-accent bg-accent-soft px-4 py-4">
+        <div
+          className={`mb-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.04em] ${TREND_TONE[result.trend] ?? ""}`}
+        >
+          趨勢 · {TREND_LABEL[result.trend] ?? result.trend}
+        </div>
         <p className="text-[1rem] font-semibold leading-relaxed text-text">
           「{result.signatureLine}」
         </p>
         <p className="mt-1 text-[0.75rem] text-text-secondary">— {personaLabel}</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded border border-border bg-surface px-3.5 py-3">
-          <div className="text-[0.72rem] text-text-secondary">趨勢</div>
-          <div className={`text-[1rem] font-semibold ${TREND_TONE[result.trend] ?? ""}`}>
-            {TREND_LABEL[result.trend] ?? result.trend}
-          </div>
-        </div>
-        <div className="rounded border border-border bg-surface px-3.5 py-3">
-          <div className="text-[0.72rem] text-text-secondary">對應心智模型</div>
-          <div className="text-[0.85rem] font-semibold">{result.keyModelApplied}</div>
-        </div>
       </div>
 
       <div className="rounded border border-border bg-surface px-3.5 py-3">

@@ -256,12 +256,16 @@ const ANNUALIZATION_DAYS = 365;
 // 有帳戶總資金時換算成報酬率(可讀成年化百分比);沒有的話直接用金額本身算——
 // mean/std 的比率不受單位縮放影響,所以 Sharpe/Sortino 數值一樣有效,只是
 // Calmar 的「年化報酬」在沒有總資金時無法讀成百分比,只能當金額本身的比率看。
+// dailyPnlsOverride:週期回顧(lib/period-stats.ts)在伺服器端呼叫時,
+// groupByLocalDay() 用的是瀏覽器本地時區方法,不能直接在 API route 用——
+// 改成外部先用「使用者告知的UTC偏移量」分好日再傳進來。瀏覽器端呼叫(績效
+// 分析頁)不傳這個參數,行為不變。
 export function riskAdjustedMetrics(
   trades: TradePoint[],
   totalCapital: number | null,
+  dailyPnlsOverride?: number[],
 ): RiskAdjustedMetrics {
-  const byDay = groupByLocalDay(trades);
-  const dailyPnls = [...byDay.values()].map((v) => v.pnl);
+  const dailyPnls = dailyPnlsOverride ?? [...groupByLocalDay(trades).values()].map((v) => v.pnl);
   const n = dailyPnls.length;
 
   if (n < 20) {
@@ -518,6 +522,181 @@ export function topSetupsByPnl(
     })
     .sort((a, b) => b.pnl - a.pnl)
     .slice(0, n);
+}
+
+export type TraderScoreComponent = {
+  score: number | null; // 0-100
+  unavailableReason?: string;
+};
+
+export type TraderScore = {
+  overall: number | null; // 0-100,四個子分數依權重加權平均,四捨五入
+  unavailableReason?: string;
+  sampleCaveat?: string;
+  profitability: TraderScoreComponent;
+  riskControl: TraderScoreComponent & { method?: "sharpe" | "drawdown_ratio" };
+  consistency: TraderScoreComponent;
+  discipline: TraderScoreComponent;
+};
+
+// 權重寫死在這裡,不是使用者可調參數——分數要能跨期間/跨使用者比較才有
+// 「一眼看懂表現」的產品價值,可調權重會讓同一個分數在不同人手上代表不同
+// 東西。獲利能力權重最高但刻意壓在 50% 以下,不讓「這期剛好賺錢」直接
+// 決定分數——呼應這個 app 一貫的「不能用損益倒推紀律好壞」原則。
+const TRADER_SCORE_WEIGHTS = {
+  profitability: 0.35,
+  riskControl: 0.25,
+  consistency: 0.2,
+  discipline: 0.2,
+} as const;
+
+// 四捨五入到整數——子分數是給人看的 0-100 分,不是內部精確計算值,顯示
+// 帶一長串小數(例如紀律分數直接沿用 disciplineRate 的浮點數)是真的
+// bug,不是刻意的精度。
+function clampScore(n: number): number {
+  return Math.round(Math.max(0, Math.min(100, n)));
+}
+
+// 兩點以上的錨定線性內插,超出範圍夾在端點——用來把「有意義但量綱不同」的
+// 原始指標(獲利因子/Sharpe/回撤比例/獲利集中度)映射成同一把 0-100 的尺。
+// points 需依 x 由小到大排序,y 可以遞增或遞減(用在「比例越小越好」的指標)。
+function piecewiseScore(value: number, points: [x: number, y: number][]): number {
+  if (value <= points[0][0]) return clampScore(points[0][1]);
+  const last = points[points.length - 1];
+  if (value >= last[0]) return clampScore(last[1]);
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x0, y0] = points[i];
+    const [x1, y1] = points[i + 1];
+    if (value >= x0 && value <= x1) {
+      const t = (value - x0) / (x1 - x0);
+      return clampScore(y0 + t * (y1 - y0));
+    }
+  }
+  return clampScore(last[1]);
+}
+
+const PROFITABILITY_POINTS: [number, number][] = [
+  [0.5, 0],
+  [1, 50],
+  [2.5, 100],
+];
+const SHARPE_POINTS: [number, number][] = [
+  [0, 0],
+  [1, 60],
+  [2, 100],
+];
+// 回撤/毛利比,只在沒有 riskAdjusted(Sharpe 需要至少20個交易日,週報幾乎
+// 不可能達標)時當備援——比例越小代表回撤相對獲利越輕微,風控越好。
+const DRAWDOWN_RATIO_POINTS: [number, number][] = [
+  [0.2, 100],
+  [1.5, 0],
+];
+// 最大單筆獲利占毛利的比例(%)——用來看「這期的獲利是不是靠一筆運氣單撐起
+// 來的」,比例越低代表獲利來源越分散、越可信。呼應 TradeZella 調研裡「某月
+// 是唯一虧損月,其餘月份撐起獲利曲線」這類集中度洞察的量化版本。
+const CONCENTRATION_POINTS: [number, number][] = [
+  [15, 100],
+  [60, 0],
+];
+
+// 綜合評分(對照 TradeZella「Zella Score」調研,產品需要一個「一眼看懂表現」
+// 的單一數字,但刻意不做成黑箱——四個子分數的公式/權重都攤開在這個檔案裡,
+// UI 端的說明文字直接描述同一套邏輯)。任一子分數算不出來時該子項回傳 null
+// 並附原因,總分只用「算得出來的子項」依權重重新歸一化,不會為了湊出一個
+// 總分就拿假設值頂替缺項。
+//
+// 樣本閘門:已平倉且有輸贏結果(不含平手)少於 10 筆時整個不給分——這個
+// 分數會被拿去做分享圖卡的「蓋章」數字,比 app 其他地方(sampleTier 從 20
+// 筆才開始加警語)更保守,避免小樣本的極端分數被截圖出去誤導。10-20筆之間
+// 仍然给分但附帶 sampleCaveat 提醒。
+export function computeTraderScore(
+  trades: TradePoint[],
+  riskAdjusted: RiskAdjustedMetrics,
+  discipline: DisciplineComplianceResult,
+): TraderScore {
+  const summary = summarise(trades);
+  const decided = summary.winCount + summary.lossCount;
+
+  if (decided < 10) {
+    return {
+      overall: null,
+      unavailableReason: `已平倉且有輸贏結果的交易只有 ${decided} 筆,樣本太少(至少需要 10 筆)無法評分。`,
+      profitability: { score: null },
+      riskControl: { score: null },
+      consistency: { score: null },
+      discipline: { score: null },
+    };
+  }
+  const sampleCaveat =
+    decided < 20 ? `樣本只有 ${decided} 筆(建議 20 筆以上),分數可能還不穩定。` : undefined;
+
+  // 獲利能力:獲利因子映射,PF=1(打平)給50分,PF>=2.5給滿分。沒有虧損
+  // 交易時 profitFactor 定義上是 null(無限大),只要有實際獲利就視為滿分。
+  const profitability: TraderScoreComponent =
+    summary.grossLoss === 0
+      ? summary.grossProfit > 0
+        ? { score: 100 }
+        : { score: null, unavailableReason: "沒有輸贏結果,無法評估獲利能力。" }
+      : { score: piecewiseScore(summary.profitFactor as number, PROFITABILITY_POINTS) };
+
+  // 風險控管:優先用 Sharpe(統計上更嚴謹),樣本不足(常見於週報,20個交易日
+  // 幾乎不可能在一週內達標)時退回回撤/毛利比當粗略替代,並標記用了哪種方法。
+  let riskControl: TraderScoreComponent & { method?: "sharpe" | "drawdown_ratio" };
+  if (riskAdjusted.available && riskAdjusted.sharpeAnnualized !== null) {
+    riskControl = {
+      score: piecewiseScore(riskAdjusted.sharpeAnnualized, SHARPE_POINTS),
+      method: "sharpe",
+    };
+  } else if (summary.grossProfit > 0) {
+    const ratio = Math.abs(summary.maxDrawdown) / summary.grossProfit;
+    riskControl = { score: piecewiseScore(ratio, DRAWDOWN_RATIO_POINTS), method: "drawdown_ratio" };
+  } else {
+    riskControl = { score: null, unavailableReason: "沒有獲利交易,無法評估風險控管。" };
+  }
+
+  // 一致性:最大單筆獲利占毛利的集中度,越分散越一致。
+  let consistency: TraderScoreComponent;
+  if (summary.grossProfit > 0) {
+    const wins = trades
+      .map((t) => t.realizedPnl)
+      .filter((p): p is number => p !== null && p > 0);
+    const largestWin = Math.max(...wins);
+    const share = (largestWin / summary.grossProfit) * 100;
+    consistency = { score: piecewiseScore(share, CONCENTRATION_POINTS) };
+  } else {
+    consistency = { score: null, unavailableReason: "沒有獲利交易,無法評估獲利集中度。" };
+  }
+
+  // 紀律:直接沿用既有的紀律遵守率計算(見 disciplineComplianceRate),
+  // 不重新發明一套判斷邏輯。
+  const disciplineComp: TraderScoreComponent =
+    discipline.marked > 0
+      ? { score: clampScore(discipline.rate as number) }
+      : { score: null, unavailableReason: "還沒有標記過紀律規則。" };
+
+  const parts: { key: keyof typeof TRADER_SCORE_WEIGHTS; comp: TraderScoreComponent }[] = [
+    { key: "profitability", comp: profitability },
+    { key: "riskControl", comp: riskControl },
+    { key: "consistency", comp: consistency },
+    { key: "discipline", comp: disciplineComp },
+  ];
+  const available = parts.filter((p) => p.comp.score !== null);
+  const overall =
+    available.length === 0
+      ? null
+      : Math.round(
+          available.reduce((s, p) => s + (p.comp.score as number) * TRADER_SCORE_WEIGHTS[p.key], 0) /
+            available.reduce((s, p) => s + TRADER_SCORE_WEIGHTS[p.key], 0),
+        );
+
+  return {
+    overall,
+    sampleCaveat,
+    profitability,
+    riskControl,
+    consistency,
+    discipline: disciplineComp,
+  };
 }
 
 // 依「本地日期」分組的每日損益。
