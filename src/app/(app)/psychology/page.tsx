@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getPsychologyData } from "@/lib/page-cache";
-import { resolveAccountScope, resolveAssetClassMix, canSuggestBybit } from "@/lib/account-filter";
+import { resolveAccountScope, resolveAssetClassMix, canSuggestExchangeSync } from "@/lib/account-filter";
 import { PsychologyView } from "@/components/analysis/psychology-view";
 import { DETECTION_DEFS } from "@/lib/behavior-presets";
 
@@ -45,7 +45,7 @@ export default async function PsychologyPage() {
           ruleCount={ruleCount}
           behaviorSettings={behaviorSettings}
           totalCapital={totalCapital}
-          showBybitHint={canSuggestBybit(assetClassMix.classes)}
+          showBybitHint={canSuggestExchangeSync(assetClassMix.classes)}
         />
       </div>
     </div>

@@ -11,7 +11,8 @@ export type AccountTemplate = {
   label: string;
   kind: AccountKind;
   assetClass: AssetClass | null;
-  hasBybitConnection: boolean;
+  hasExchangeConnection: boolean;
+  exchangeProvider: "BYBIT" | "OKX" | null;
   lastSyncedAt: string | null;
   hasGoal: boolean;
   tradeCount: number;
@@ -62,7 +63,9 @@ export function AccountTemplates() {
         : "這個模板底下沒有交易紀錄。";
     const ok = window.confirm(
       `刪除模板「${a.label}」?\n\n${detail}${
-        a.hasBybitConnection ? "\n\n連接的 Bybit 唯讀金鑰會一併移除(不影響你在 Bybit 上的帳號本身)。" : ""
+        a.hasExchangeConnection
+          ? `\n\n連接的 ${a.exchangeProvider ?? "交易所"} 唯讀金鑰會一併移除(不影響你在交易所上的帳號本身)。`
+          : ""
       }`,
     );
     if (!ok) return;
@@ -151,8 +154,8 @@ export function AccountTemplates() {
                       </span>
                     </div>
                     <div className="mt-0.5 text-[0.75rem] text-text-secondary">
-                      {a.hasBybitConnection
-                        ? "已連接 Bybit"
+                      {a.hasExchangeConnection
+                        ? `已連接 ${a.exchangeProvider ?? "交易所"}`
                         : a.assetClass
                           ? ASSET_CLASS_LABEL[a.assetClass]
                           : "未連接交易所 · 尚未宣告資產類別"}
@@ -261,7 +264,7 @@ function AccountForm({
     label: string;
     kind: AccountKind;
     assetClass: AssetClass | null;
-    hasBybitConnection?: boolean;
+    hasExchangeConnection?: boolean;
   };
   submitLabel: string;
   onCancel: () => void;
@@ -334,15 +337,15 @@ function AccountForm({
           資產類別(選填)
         </label>
         <p className="mb-1.5 text-[0.75rem] text-text-secondary">
-          {initial?.hasBybitConnection
-            ? "這個模板已連接 Bybit,資產類別固定視為連線本身的類型(加密貨幣),這裡選了也不會被採用。"
+          {initial?.hasExchangeConnection
+            ? "這個模板已連接交易所,資產類別固定視為連線本身的類型(加密貨幣),這裡選了也不會被採用。"
             : "只有不打算連接交易所的手動記錄模板需要填——之後在「交易所連線」分頁幫這個模板接上連線的話,資產類別會自動視為連線本身的類型,不用另外選。"}
         </p>
         <select
           className={input}
           value={assetClass}
           onChange={(e) => setAssetClass(e.target.value as AssetClass | "")}
-          disabled={initial?.hasBybitConnection}
+          disabled={initial?.hasExchangeConnection}
         >
           <option value="">先不指定</option>
           {(Object.keys(ASSET_CLASS_LABEL) as AssetClass[]).map((c) => (

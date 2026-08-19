@@ -74,12 +74,12 @@ export function GoalSettings() {
     setSaved(true);
   }
 
-  async function fetchFromBybit() {
+  async function fetchFromExchange() {
     if (!accountId) return;
     setFetchingBalance(true);
     setBalanceNotice(null);
     setError(null);
-    const res = await fetch(`/api/bybit/balance?accountId=${accountId}`);
+    const res = await fetch(`/api/exchange/balance?accountId=${accountId}`);
     const d = await res.json();
     setFetchingBalance(false);
     if (!res.ok) {
@@ -90,8 +90,8 @@ export function GoalSettings() {
     await save({ ...(goals as Goals), totalCapital: d.totalEquity });
     setBalanceNotice(
       prev !== null && prev !== undefined && prev !== d.totalEquity
-        ? `已用 Bybit 帳戶淨值更新(原本 ${prev} → ${d.totalEquity.toFixed(1)})`
-        : `已帶入 Bybit 帳戶淨值:${d.totalEquity.toFixed(1)}U`,
+        ? `已用交易所帳戶淨值更新(原本 ${prev} → ${d.totalEquity.toFixed(1)})`
+        : `已帶入交易所帳戶淨值:${d.totalEquity.toFixed(1)}U`,
     );
   }
 
@@ -211,16 +211,16 @@ export function GoalSettings() {
 
         <Row
           label="帳戶總資金(U)"
-          hint="資金比例模式的計算基準,固定金額模式不影響量表。可以手動填,或從 Bybit 帳戶淨值帶入(含未實現損益,之後每次都要重新抓,不會自動更新)"
+          hint="資金比例模式的計算基準,固定金額模式不影響量表。可以手動填,或從已連接的交易所帳戶淨值帶入(含未實現損益,之後每次都要重新抓,不會自動更新)"
         >
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={fetchFromBybit}
+              onClick={fetchFromExchange}
               disabled={fetchingBalance}
               className="whitespace-nowrap rounded border border-border px-2.5 py-1.5 text-[0.78rem] text-text-secondary hover:border-accent hover:text-accent disabled:opacity-50"
             >
-              {fetchingBalance ? "抓取中…" : "從 Bybit 抓取"}
+              {fetchingBalance ? "抓取中…" : "從交易所抓取"}
             </button>
             <input
               type="number"

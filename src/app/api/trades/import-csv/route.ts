@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
   let skippedDuplicates = 0;
 
   for (const row of rows) {
-    // CSV 沒有唯一訂單 ID(跟 API 同步的 bybitOrderId 不一樣),用「同商品+
+    // CSV 沒有唯一訂單 ID(跟 API 同步的 exchangeOrderId 不一樣),用「同商品+
     // 同平倉時間+進出場價+損益都吻合」判斷是不是已經匯入過(或已經被 API
     // 同步過)——見 lib/bybit-csv.ts 開頭說明。
     const candidates = await prisma.trade.findMany({

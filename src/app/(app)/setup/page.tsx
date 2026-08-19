@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getSetupPageData } from "@/lib/page-cache";
-import { resolveAccountScope, resolveAssetClassMix, canSuggestBybit } from "@/lib/account-filter";
+import { resolveAccountScope, resolveAssetClassMix, canSuggestExchangeSync } from "@/lib/account-filter";
 import { SetupView } from "@/components/analysis/setup-view";
 
 export const metadata: Metadata = {
@@ -28,7 +28,7 @@ export default async function SetupPage() {
         <SetupView
           trades={trades}
           enabledFieldKeys={enabledFieldKeys}
-          showBybitHint={canSuggestBybit(assetClassMix.classes)}
+          showBybitHint={canSuggestExchangeSync(assetClassMix.classes)}
         />
       </div>
     </div>

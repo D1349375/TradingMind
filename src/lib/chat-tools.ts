@@ -285,7 +285,7 @@ export async function executeGetAccountSettings(userId: string, scope: AccountSc
         label: true,
         kind: true,
         assetClass: true,
-        bybitConnection: { select: { id: true, lastSyncedAt: true } },
+        exchangeConnection: { select: { id: true, provider: true, lastSyncedAt: true } },
       },
     }),
     prisma.goal.findMany({
@@ -299,9 +299,10 @@ export async function executeGetAccountSettings(userId: string, scope: AccountSc
     accounts: accounts.map((a) => ({
       label: a.label,
       kind: a.kind,
-      assetClass: a.assetClass ?? (a.bybitConnection ? "CRYPTO" : null),
-      exchangeConnected: a.bybitConnection !== null,
-      lastSyncedAt: a.bybitConnection?.lastSyncedAt?.toISOString() ?? null,
+      assetClass: a.assetClass ?? (a.exchangeConnection ? "CRYPTO" : null),
+      exchangeConnected: a.exchangeConnection !== null,
+      exchangeProvider: a.exchangeConnection?.provider ?? null,
+      lastSyncedAt: a.exchangeConnection?.lastSyncedAt?.toISOString() ?? null,
       isInCurrentFilterScope: scope.accountIds.includes(a.id),
     })),
     goalSettings: goals.map((g) => ({

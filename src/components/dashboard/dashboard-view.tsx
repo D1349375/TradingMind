@@ -112,8 +112,8 @@ export function DashboardView({
           </div>
           <p className="text-[0.82rem] text-text-secondary">
             {showBybitHint
-              ? "到「設定 → 交易所連線」連接 Bybit 同步,或到「交易記錄」頁用 CSV 匯入、手動新增交易。"
-              : "這個模板的資產類別跟目前唯一支援自動同步的 Bybit(僅限加密貨幣)對不上,期貨/CFD 類交易所串接還在規劃中。可以到「交易記錄」頁用 CSV 匯入或手動新增交易。"}
+              ? "到「設定 → 交易所連線」連接 Bybit 或 OKX 同步,或到「交易記錄」頁用 CSV 匯入、手動新增交易。"
+              : "這個模板的資產類別跟目前支援自動同步的交易所(Bybit/OKX,僅限加密貨幣)對不上,期貨/CFD 類交易所串接還在規劃中。可以到「交易記錄」頁用 CSV 匯入或手動新增交易。"}
           </p>
         </div>
       </>

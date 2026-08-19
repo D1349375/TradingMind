@@ -75,7 +75,7 @@ export async function DELETE(
     );
   }
 
-  // BybitConnection/Goal 是 onDelete: Cascade 會一併刪除;Trade.accountId
+  // ExchangeConnection/Goal 是 onDelete: Cascade 會一併刪除;Trade.accountId
   // 是 onDelete: SetNull,底下的交易會變成未分類,不會被刪除。
   await prisma.tradingAccount.delete({ where: { id: params.id } });
 

@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getOwnedAccount } from "@/lib/accounts";
-import { syncBybitTrades } from "@/lib/sync";
+import { syncExchangeTrades } from "@/lib/sync";
 import { BybitError } from "@/lib/bybit";
+import { OkxError } from "@/lib/okx";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // 手動觸發同步(指定某個帳戶模板)。定時排程(pg_cron / inngest)之後會呼叫
-// 同一支 syncBybitTrades,邏輯只寫一份。
+// 同一支 syncExchangeTrades,邏輯只寫一份,依連線的 provider 分派到正確的
+// 交易所同步邏輯(見 lib/sync.ts)。
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
@@ -32,11 +34,11 @@ export async function POST(request: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterSeconds);
 
   try {
-    const result = await syncBybitTrades(accountId, user.id);
+    const result = await syncExchangeTrades(accountId, user.id);
     return NextResponse.json(result);
   } catch (e) {
     const message =
-      e instanceof BybitError
+      e instanceof BybitError || e instanceof OkxError
         ? e.message
         : e instanceof Error
           ? e.message

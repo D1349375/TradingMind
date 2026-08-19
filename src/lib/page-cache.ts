@@ -69,7 +69,7 @@ export const getDashboardData = unstable_cache(
         },
         orderBy: { closedAt: "asc" },
       }),
-      prisma.bybitConnection.findMany({
+      prisma.exchangeConnection.findMany({
         where: { accountId: { in: accountIds } },
         select: { lastSyncedAt: true },
       }),

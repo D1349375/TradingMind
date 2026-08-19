@@ -64,9 +64,9 @@ model TradingAccount {
   assetClass AssetClass?
   createdAt  DateTime    @default(now())
 
-  trades          Trade[]
-  bybitConnection BybitConnection?
-  goal            Goal?
+  trades             Trade[]
+  exchangeConnection ExchangeConnection?
+  goal               Goal?
 }
 
 enum AccountKind {
@@ -84,17 +84,28 @@ enum AssetClass {
   OPTIONS
 }
 
-// Bybit API 唯讀金鑰連線(規劃書 5.3:AES-256-GCM 加密儲存,絕不存明文)。
+// 交易所唯讀金鑰連線(規劃書 5.3:AES-256-GCM 加密儲存,絕不存明文)。
 // 綁在 TradingAccount 底下而不是 User 底下(2026-08-16 遷移)——一個使用者
-// 可以有多個模板,各自獨立連或不連交易所。
-model BybitConnection {
-  id              String         @id @default(uuid())
-  accountId       String         @unique
-  account         TradingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  apiKeyCipher    String
-  apiSecretCipher String
-  lastSyncedAt    DateTime?
-  createdAt       DateTime       @default(now())
+// 可以有多個模板,各自獨立連或不連交易所。2026-08-19 從只支援 Bybit 的
+// BybitConnection 通用化成這張表(見 lib/exchanges/*)——OKX 之後每接一家
+// 新交易所都共用同一張表,不再每家各開一張長得一樣的表。apiPassphraseCipher
+// 是給 OKX 這類需要「Key+Secret+Passphrase」三件式的交易所用,Bybit 用不到
+// 留 null。
+model ExchangeConnection {
+  id                  String           @id @default(uuid())
+  accountId           String           @unique
+  account             TradingAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  provider            ExchangeProvider
+  apiKeyCipher        String
+  apiSecretCipher     String
+  apiPassphraseCipher String?
+  lastSyncedAt        DateTime?
+  createdAt           DateTime         @default(now())
+}
+
+enum ExchangeProvider {
+  BYBIT
+  OKX
 }
 
 // Setup 是第一級實體,不是自訂欄位的 EAV 值——因為裁量交易版驗證流程
@@ -146,7 +157,7 @@ model Trade {
   fundingFee   Decimal?
   realizedPnl  Decimal?
   source       TradeSource @default(MANUAL)
-  bybitOrderId String?     @unique // 防止同步時重複建檔
+  exchangeOrderId String?  @unique // 防止同步時重複建檔
 
   // ---- 可選欄位中,結構化的先抽成真欄位;其餘走 CustomFieldValue EAV ----
   // 止損價(2026-08-15 新增):新增交易時必填,可回頭編輯。R 值(rMultiple)
@@ -181,6 +192,7 @@ enum Direction {
 
 enum TradeSource {
   BYBIT_SYNC
+  OKX_SYNC
   CSV_IMPORT
   MANUAL
 }

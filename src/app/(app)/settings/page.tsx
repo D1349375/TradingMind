@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { AccountTemplates } from "@/components/settings/account-templates";
-import { BybitConnection } from "@/components/settings/bybit-connection";
+import { ExchangeConnection } from "@/components/settings/exchange-connection";
 import { GoalSettings } from "@/components/settings/goal-settings";
 import { FieldBuilder } from "@/components/settings/field-builder";
 import { DisciplineRules } from "@/components/settings/discipline-rules";
@@ -78,7 +78,7 @@ export default async function SettingsPage({
           {active === "accounts" ? (
             <AccountTemplates />
           ) : active === "exchange" ? (
-            <BybitConnection />
+            <ExchangeConnection />
           ) : active === "goals" ? (
             <GoalSettings />
           ) : active === "fields" ? (
