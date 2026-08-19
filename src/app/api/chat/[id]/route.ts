@@ -6,8 +6,9 @@ import { isPersonaKey } from "@/lib/personas";
 import { resolveAccountScope } from "@/lib/account-filter";
 import { runPersonaChat, ChatNotConfiguredError } from "@/lib/chat";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
 
-const CREDIT_COST = 3; // 暫定值,同 /api/chat/route.ts 說明
+const CREDIT_COST = 3; // 2026-08-19 定案,同 /api/chat/route.ts 說明
 const MAX_MESSAGE_LENGTH = 2000;
 
 // 同一個對話的訊息數硬上限(使用者+人格訊息合計)。防的是「刻意不開新
@@ -71,13 +72,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: `訊息長度不能超過 ${MAX_MESSAGE_LENGTH} 字` }, { status: 400 });
   }
 
-  const balance = await prisma.creditBalance.findUnique({ where: { userId: user.id } });
-  if (!balance || balance.balance < CREDIT_COST) {
+  const available = await getSpendableBalance(user.id);
+  if (!available || available.total < CREDIT_COST) {
     return NextResponse.json(
-      { error: "Credit 餘額不足", required: CREDIT_COST, balance: balance?.balance ?? 0 },
+      { error: "Credit 餘額不足", required: CREDIT_COST, balance: available?.total ?? 0 },
       { status: 402 },
     );
   }
+  const spend = planCreditSpend(available, CREDIT_COST);
 
   const scope = await resolveAccountScope(user.id);
   const history = conversation.messages.map((m) => ({
@@ -116,13 +118,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       },
     }),
     prisma.chatConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
-    prisma.creditBalance.update({
-      where: { userId: user.id },
-      data: { balance: { decrement: CREDIT_COST }, totalSpent: { increment: CREDIT_COST } },
-    }),
-    prisma.creditTransaction.create({
-      data: { userId: user.id, amount: -CREDIT_COST, reason: "persona_chat" },
-    }),
+    ...creditSpendOps(user.id, spend, CREDIT_COST, "persona_chat"),
   ]);
 
   return NextResponse.json({ reply: result.text });

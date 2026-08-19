@@ -13,6 +13,7 @@ import { DETECTION_DEFS } from "@/lib/behavior-presets";
 import { resolveAccountScope, resolveAssetClassMix } from "@/lib/account-filter";
 import { tradeAccountFilter, resolveGoalState } from "@/lib/page-cache";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
 
 // 週報/月報產生。額度這次先純 Credit 扣款,不分訂閱層級(見
 // lib/period-report.ts 開頭說明;規劃書寫「進階訂閱獨家」,但系統目前完全
@@ -162,13 +163,14 @@ export async function POST(request: NextRequest) {
 
   // 1. 預檢查額度,先擋掉沒錢的請求,不浪費一次 LLM 呼叫
   const creditCost = CREDIT_COST[periodType];
-  const balance = await prisma.creditBalance.findUnique({ where: { userId: user.id } });
-  if (!balance || balance.balance < creditCost) {
+  const available = await getSpendableBalance(user.id);
+  if (!available || available.total < creditCost) {
     return NextResponse.json(
-      { error: "Credit 餘額不足", required: creditCost, balance: balance?.balance ?? 0 },
+      { error: "Credit 餘額不足", required: creditCost, balance: available?.total ?? 0 },
       { status: 402 },
     );
   }
+  const spend = planCreditSpend(available, creditCost);
 
   let result;
   try {
@@ -203,17 +205,12 @@ export async function POST(request: NextRequest) {
         result,
       },
     }),
-    prisma.creditBalance.update({
-      where: { userId: user.id },
-      data: { balance: { decrement: creditCost }, totalSpent: { increment: creditCost } },
-    }),
-    prisma.creditTransaction.create({
-      data: {
-        userId: user.id,
-        amount: -creditCost,
-        reason: periodType === "WEEK" ? "period_report_week" : "period_report_month",
-      },
-    }),
+    ...creditSpendOps(
+      user.id,
+      spend,
+      creditCost,
+      periodType === "WEEK" ? "period_report_week" : "period_report_month",
+    ),
   ]);
 
   return NextResponse.json({ reportId: report.id, creditsSpent: creditCost });

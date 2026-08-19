@@ -314,9 +314,16 @@ enum LossLimitMode {
 model CreditBalance {
   userId      String @id
   user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance     Int    @default(50) // Free 方案贈送額度
+  balance     Int    @default(50) // 儲值包買的,不會過期
   totalEarned Int    @default(50)
   totalSpent  Int    @default(0)
+
+  // 訂閱每月贈送的額度,用不完歸零(下個月由訂閱扣款流程重新給)——跟
+  // balance分開,消費時優先扣這裡。目前綠界只接了一次性儲值包,定期
+  // 定額訂閱購買流程還沒做,所以現在還沒有任何地方會把這欄位設成正數,
+  // 這兩個欄位是先建好的地基,見 lib/credits.ts。
+  grantedCredits         Int       @default(0)
+  grantedCreditsResetAt  DateTime?
 }
 
 model CreditTransaction {

@@ -7,10 +7,15 @@ import { isPersonaKey } from "@/lib/personas";
 import { resolveAccountScope } from "@/lib/account-filter";
 import { runPersonaChat, ChatNotConfiguredError } from "@/lib/chat";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
 
 // 開放式人格問答(TradeMind_開放式人格問答_技術設計.md)。這支路由建立
 // 新對話(第一則訊息);既有對話的後續訊息走 /api/chat/[id]。
-const CREDIT_COST = 3; // 暫定值,見設計文件5.2節,未實測真實token成本
+// 2026-08-19 定案維持3(見TradeMind_Credit定價與營收策略.md第十節):真實
+// 3輪對話實測,平均每則成本約$0.04(標準定價,已排除即將到期的Sonnet 5
+// 上線優惠價),新對話第一則(無快取)最貴約$0.076,margin最薄約36%,
+// 後續輪次因命中prompt cache margin回升到78-86%——維持3不調整。
+const CREDIT_COST = 3;
 const MAX_MESSAGE_LENGTH = 2000;
 
 export async function GET() {
@@ -52,13 +57,14 @@ export async function POST(request: NextRequest) {
   }
 
   // 1. 預檢查額度,先擋掉沒錢的請求,不浪費一次 LLM 呼叫
-  const balance = await prisma.creditBalance.findUnique({ where: { userId: user.id } });
-  if (!balance || balance.balance < CREDIT_COST) {
+  const available = await getSpendableBalance(user.id);
+  if (!available || available.total < CREDIT_COST) {
     return NextResponse.json(
-      { error: "Credit 餘額不足", required: CREDIT_COST, balance: balance?.balance ?? 0 },
+      { error: "Credit 餘額不足", required: CREDIT_COST, balance: available?.total ?? 0 },
       { status: 402 },
     );
   }
+  const spend = planCreditSpend(available, CREDIT_COST);
 
   const scope = await resolveAccountScope(user.id);
 
@@ -100,13 +106,7 @@ export async function POST(request: NextRequest) {
         creditsCost: CREDIT_COST,
       },
     }),
-    prisma.creditBalance.update({
-      where: { userId: user.id },
-      data: { balance: { decrement: CREDIT_COST }, totalSpent: { increment: CREDIT_COST } },
-    }),
-    prisma.creditTransaction.create({
-      data: { userId: user.id, amount: -CREDIT_COST, reason: "persona_chat" },
-    }),
+    ...creditSpendOps(user.id, spend, CREDIT_COST, "persona_chat"),
   ]);
 
   return NextResponse.json({ conversationId, reply: result.text });

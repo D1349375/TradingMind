@@ -8,6 +8,7 @@ import {
   type TradeDataForAnalysis,
 } from "@/lib/trader-debate";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
 
 // 純文字單一人格分析,規劃書 11.2 節定價
 const CREDIT_COST = 5;
@@ -59,15 +60,14 @@ export async function POST(
   }
 
   // 1. 預檢查額度(規劃書 11.4 流程),先擋掉沒錢的請求,不浪費一次 LLM 呼叫
-  const balance = await prisma.creditBalance.findUnique({
-    where: { userId: user.id },
-  });
-  if (!balance || balance.balance < CREDIT_COST) {
+  const available = await getSpendableBalance(user.id);
+  if (!available || available.total < CREDIT_COST) {
     return NextResponse.json(
-      { error: "Credit 餘額不足", required: CREDIT_COST, balance: balance?.balance ?? 0 },
+      { error: "Credit 餘額不足", required: CREDIT_COST, balance: available?.total ?? 0 },
       { status: 402 },
     );
   }
+  const spend = planCreditSpend(available, CREDIT_COST);
 
   const tradeData: TradeDataForAnalysis = {
     symbol: trade.symbol,
@@ -101,15 +101,7 @@ export async function POST(
   }
 
   // 2. 只有真的成功產出結果才扣款——失敗的呼叫不該讓使用者付錢
-  await prisma.$transaction([
-    prisma.creditBalance.update({
-      where: { userId: user.id },
-      data: { balance: { decrement: CREDIT_COST }, totalSpent: { increment: CREDIT_COST } },
-    }),
-    prisma.creditTransaction.create({
-      data: { userId: user.id, amount: -CREDIT_COST, reason: REASON },
-    }),
-  ]);
+  await prisma.$transaction(creditSpendOps(user.id, spend, CREDIT_COST, REASON));
 
   return NextResponse.json({ result, creditsSpent: CREDIT_COST });
 }
