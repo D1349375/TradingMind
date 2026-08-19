@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { sampleTier, SAMPLE_TIER_LABEL } from "@/lib/stats";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
+import { GatedFeature } from "@/components/ui/gated-feature";
 
 // 對應 prototype 的 Setup 分析頁:Setup 排行 + 依維度比較。
 
@@ -390,7 +390,9 @@ export function SetupView({
       </section>
 
       {tier === "FREE" ? (
-        <UpgradePrompt feature="二維交叉分析" />
+        <GatedFeature feature="二維交叉分析">
+          <CrossAnalysisSection trades={trades} enabledFieldKeys={enabledFieldKeys} />
+        </GatedFeature>
       ) : (
         <CrossAnalysisSection trades={trades} enabledFieldKeys={enabledFieldKeys} />
       )}

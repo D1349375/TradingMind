@@ -17,7 +17,7 @@ import {
   type DateRangeValue,
 } from "@/components/dashboard/date-range-select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
+import { GatedFeature } from "@/components/ui/gated-feature";
 
 function fmt(n: number, digits = 2) {
   return n.toLocaleString("en-US", {
@@ -160,22 +160,36 @@ export function DashboardView({
             )}
           </div>
           {/* 權益曲線/盈虧佔比是「分析洞察」層,FREE 只給 StatGrid+日曆(基本數字),
-              STANDARD/ADVANCED 才解鎖——見規劃書 Credit定價文件第五節分層設計。 */}
-          {tier === "FREE" ? (
-            <div className="mb-4">
-              <UpgradePrompt feature="權益曲線與盈虧佔比圖表" />
-            </div>
-          ) : (
-            <div className="mb-4 grid grid-cols-[1.4fr_1fr] gap-4">
-              <EquityChart curve={curve} />
-              <WinLossCard summary={summary} />
-            </div>
-          )}
+              STANDARD/ADVANCED 才解鎖——見規劃書 Credit定價文件第五節分層設計。
+              內容一律照常渲染(真實資料),只是用 GatedFeature 灰階蓋鎖頭,
+              不是整段換成文字提示——2026-08-20 改版,讓使用者先看到「這功能
+              長什麼樣子」。 */}
+          <div className="mb-4">
+            {tier === "FREE" ? (
+              <GatedFeature feature="權益曲線與盈虧佔比圖表">
+                <div className="grid grid-cols-[1.4fr_1fr] gap-4">
+                  <EquityChart curve={curve} />
+                  <WinLossCard summary={summary} />
+                </div>
+              </GatedFeature>
+            ) : (
+              <div className="grid grid-cols-[1.4fr_1fr] gap-4">
+                <EquityChart curve={curve} />
+                <WinLossCard summary={summary} />
+              </div>
+            )}
+          </div>
           {/* 日曆卡有自己的月份導覽,同樣不受上方區間篩選影響 */}
           <CalendarCard trades={trades} />
         </>
       ) : tier !== "ADVANCED" ? (
-        <UpgradePrompt feature="績效分析頁(風險調整報酬指標、破產風險模擬等)" requiredTier="ADVANCED" />
+        <GatedFeature feature="績效分析頁(風險調整報酬指標、破產風險模擬等)" requiredTier="ADVANCED">
+          <PerformanceView
+            trades={filteredTrades}
+            totalCapital={goals?.totalCapital ?? null}
+            assetClassMixed={assetClassMixed}
+          />
+        </GatedFeature>
       ) : (
         <PerformanceView
           trades={filteredTrades}

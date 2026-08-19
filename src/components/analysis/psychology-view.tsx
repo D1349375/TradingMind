@@ -7,7 +7,7 @@ import {
 } from "@/lib/behavior-detection";
 import { DETECTION_DEFS } from "@/lib/behavior-presets";
 import { disciplineComplianceRate } from "@/lib/stats";
-import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
+import { GatedFeature } from "@/components/ui/gated-feature";
 
 // 對應 prototype 的心態分析頁。
 //
@@ -164,28 +164,11 @@ export function PsychologyView({
     );
   }
 
-  return (
+  // 紀律遵守率/情緒×損益/行為偵測是 STANDARD/ADVANCED 才解鎖的分析層(見
+  // 規劃書 Credit定價文件第五節)。抽成變數是因為 FREE 方案一樣要渲染真實
+  // 內容(只是灰階蓋鎖頭,見 GatedFeature),不想把這一大段 JSX 重複寫兩遍。
+  const disciplineEmotionBehaviorBlock = (
     <>
-      <div className="mb-5 grid grid-cols-4 gap-px overflow-hidden rounded border border-border bg-border">
-        <Stat label="最大連續虧損" value={`${stats.maxLossStreak} 筆`} tone="loss" />
-        <Stat label="最大連續獲利" value={`${stats.maxWinStreak} 筆`} tone="profit" />
-        <Stat
-          label="平均每日交易次數"
-          value={stats.tradingDays ? fmt(stats.avgPerDay, 1) : "—"}
-          hint={stats.tradingDays ? `共 ${stats.tradingDays} 個交易日` : undefined}
-        />
-        <Stat
-          label="單日最多交易"
-          value={stats.busiest ? `${stats.busiest} 筆` : "—"}
-        />
-      </div>
-
-      {tier === "FREE" ? (
-        <div className="mb-4">
-          <UpgradePrompt feature="紀律遵守率、情緒 × 損益交叉分析、行為偵測" />
-        </div>
-      ) : (
-        <>
       <div className="mb-4 grid grid-cols-2 gap-4">
         <Card title="紀律遵守率">
           {ruleCount === 0 ? (
@@ -288,7 +271,33 @@ export function PsychologyView({
         behaviorSettings={behaviorSettings}
         totalCapital={totalCapital}
       />
-        </>
+    </>
+  );
+
+  return (
+    <>
+      <div className="mb-5 grid grid-cols-4 gap-px overflow-hidden rounded border border-border bg-border">
+        <Stat label="最大連續虧損" value={`${stats.maxLossStreak} 筆`} tone="loss" />
+        <Stat label="最大連續獲利" value={`${stats.maxWinStreak} 筆`} tone="profit" />
+        <Stat
+          label="平均每日交易次數"
+          value={stats.tradingDays ? fmt(stats.avgPerDay, 1) : "—"}
+          hint={stats.tradingDays ? `共 ${stats.tradingDays} 個交易日` : undefined}
+        />
+        <Stat
+          label="單日最多交易"
+          value={stats.busiest ? `${stats.busiest} 筆` : "—"}
+        />
+      </div>
+
+      {tier === "FREE" ? (
+        <div className="mb-4">
+          <GatedFeature feature="紀律遵守率、情緒 × 損益交叉分析、行為偵測">
+            {disciplineEmotionBehaviorBlock}
+          </GatedFeature>
+        </div>
+      ) : (
+        disciplineEmotionBehaviorBlock
       )}
 
       <div className="rounded border border-border bg-surface px-4 py-4">
