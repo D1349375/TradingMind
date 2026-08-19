@@ -118,16 +118,6 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     label: "AI 分析",
     items: [
       {
-        label: "單一人格分析",
-        badge: "Phase 2",
-        icon: icon(
-          <>
-            <circle cx="10" cy="10" r="7" />
-            <path d="M7 10l2 2 4-4" />
-          </>,
-        ),
-      },
-      {
         label: "多人格辯論室",
         badge: "進階",
         icon: icon(<path d="M3 5h14v8H8l-4 3v-3H3z" />),
