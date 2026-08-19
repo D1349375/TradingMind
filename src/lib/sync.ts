@@ -11,6 +11,12 @@ import {
   type OkxCredentials,
   type ClosedPositionItem,
 } from "@/lib/okx";
+import {
+  getActiveSymbols,
+  getUserTrades,
+  type BinanceCredentials,
+  type UserTrade,
+} from "@/lib/binance";
 
 // Bybit closed-pnl 單次查詢區間上限 7 天(endTime - startTime <= 7 days)。
 // 目前只同步最近 7 天把管線跑通;回補更長歷史要以 7 天為單位往前切,
@@ -58,6 +64,9 @@ export async function syncExchangeTrades(
   }
   if (conn.provider === "OKX") {
     return syncOkxTrades(accountId, userId);
+  }
+  if (conn.provider === "BINANCE") {
+    return syncBinanceTrades(accountId, userId);
   }
   return syncBybitTrades(accountId, userId);
 }
@@ -243,4 +252,90 @@ async function syncOkxTrades(accountId: string, userId: string): Promise<SyncRes
   });
 
   return { fetched: inWindow.length, created, skipped, pages };
+}
+
+// ⚠️ 簡單版,見 lib/binance.ts 的 TODO 註解——Binance 沒有「已平倉交易」
+// 端點,只有逐筆成交明細。這裡只挑 realizedPnl!=0 的平倉成交,一筆成交
+// 直接存成一筆 Trade,不合併同一個部位分批進出場的多筆成交。因此
+// entryPrice/exitPrice 目前都填成同一個成交價(不知道真正的進場價,誠實
+// 反映在這個限制上,不是假裝準確),leverage 留 null(這支端點不給,要
+// 另外查 positionRisk 才有,先不做)。之後要升級成正確合併邏輯時,這裡
+// 是要動的地方。
+async function syncBinanceTrades(accountId: string, userId: string): Promise<SyncResult> {
+  const conn = await prisma.exchangeConnection.findUnique({ where: { accountId } });
+  if (!conn) {
+    throw new Error("尚未連接 Binance,請先到設定頁完成連線");
+  }
+
+  const creds: BinanceCredentials = {
+    apiKey: decrypt(conn.apiKeyCipher),
+    apiSecret: decrypt(conn.apiSecretCipher),
+  };
+
+  const endTime = Date.now();
+  const startTime = endTime - SYNC_WINDOW_MS;
+
+  // userTrades 要求帶 symbol,不像 Bybit/OKX 能一次抓全部商品——先用
+  // income 記錄反推這個同步窗口內有交易過哪些商品,再逐一查。
+  const symbols = await getActiveSymbols(creds, { startTime, endTime });
+
+  const items: UserTrade[] = [];
+  for (const symbol of symbols) {
+    const trades = await getUserTrades(creds, { symbol, startTime, endTime, limit: PAGE_LIMIT });
+    items.push(...trades.filter((t) => t.realizedPnl !== "0"));
+  }
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const item of items) {
+    // Binance 的成交 id 只在同一個商品內唯一,不是全交易所唯一,組合
+    // symbol 才能保證跟 Trade.exchangeOrderId 的全域 unique 約束相容。
+    const exchangeOrderId = `binance:${item.symbol}:${item.id}`;
+    const existing = await prisma.trade.findUnique({
+      where: { exchangeOrderId },
+      select: { id: true },
+    });
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+
+    // 平倉成交:positionSide 是 LONG/SHORT 就直接用(雙向持倉模式);
+    // 單向持倉模式固定回 BOTH,這時候平倉成交的 side 剛好跟被平倉部位
+    // 的方向相反(BUY平倉→原本是SHORT,SELL平倉→原本是LONG)。
+    const direction: "LONG" | "SHORT" =
+      item.positionSide === "LONG" || item.positionSide === "SHORT"
+        ? item.positionSide
+        : item.side === "BUY"
+          ? "SHORT"
+          : "LONG";
+
+    await prisma.trade.create({
+      data: {
+        userId,
+        accountId,
+        exchangeOrderId,
+        source: "BINANCE_SYNC",
+        symbol: item.symbol,
+        direction,
+        openedAt: null,
+        closedAt: new Date(item.time),
+        entryPrice: toDecimalOrZero(item.price),
+        exitPrice: toDecimal(item.price),
+        positionSize: toDecimalOrZero(item.qty),
+        leverage: null,
+        fee: toDecimalOrZero(item.commission).abs(),
+        realizedPnl: toDecimal(item.realizedPnl),
+      },
+    });
+    created += 1;
+  }
+
+  await prisma.exchangeConnection.update({
+    where: { accountId },
+    data: { lastSyncedAt: new Date() },
+  });
+
+  return { fetched: items.length, created, skipped, pages: symbols.length };
 }

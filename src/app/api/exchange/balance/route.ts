@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 import { getWalletBalance as getBybitBalance, BybitError } from "@/lib/bybit";
 import { getWalletBalance as getOkxBalance, OkxError } from "@/lib/okx";
+import { getWalletBalance as getBinanceBalance, BinanceError } from "@/lib/binance";
 
 // 帳戶總資金——唯讀金鑰就能查,不需要另外要求交易權限。
 export async function GET(request: NextRequest) {
@@ -34,13 +35,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ totalEquity: Number(balance.totalEquity) });
     }
 
+    if (conn.provider === "BINANCE") {
+      const balance = await getBinanceBalance({
+        apiKey: decrypt(conn.apiKeyCipher),
+        apiSecret: decrypt(conn.apiSecretCipher),
+      });
+      return NextResponse.json({ totalEquity: Number(balance.totalEquity) });
+    }
+
     const balance = await getBybitBalance({
       apiKey: decrypt(conn.apiKeyCipher),
       apiSecret: decrypt(conn.apiSecretCipher),
     });
     return NextResponse.json({ totalEquity: Number(balance.totalEquity) });
   } catch (e) {
-    const message = e instanceof BybitError || e instanceof OkxError ? e.message : "抓取失敗";
+    const message =
+      e instanceof BybitError || e instanceof OkxError || e instanceof BinanceError ? e.message : "抓取失敗";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
