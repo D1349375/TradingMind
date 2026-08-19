@@ -107,6 +107,7 @@ enum ExchangeProvider {
   BYBIT
   OKX
   BINANCE
+  BINGX
 }
 
 // Setup 是第一級實體,不是自訂欄位的 EAV 值——因為裁量交易版驗證流程
@@ -195,6 +196,7 @@ enum TradeSource {
   BYBIT_SYNC
   OKX_SYNC
   BINANCE_SYNC
+  BINGX_SYNC
   CSV_IMPORT
   MANUAL
 }

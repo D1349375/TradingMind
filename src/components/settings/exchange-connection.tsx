@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Provider = "BYBIT" | "OKX" | "BINANCE";
+type Provider = "BYBIT" | "OKX" | "BINANCE" | "BINGX";
 
 type ConnectionState = {
   connected: boolean;
@@ -31,12 +31,14 @@ const PROVIDER_LABEL: Record<Provider, string> = {
   BYBIT: "Bybit",
   OKX: "OKX",
   BINANCE: "Binance",
+  BINGX: "BingX",
 };
 
 const PROVIDER_APPLY_URL: Record<Provider, string> = {
   BYBIT: "https://www.bybit.com/app/user/api-management",
   OKX: "https://www.okx.com/account/my-api",
   BINANCE: "https://www.binance.com/en/my/settings/api-management",
+  BINGX: "https://bingx.com/en/account/api/",
 };
 
 const PROVIDER_STEPS: Record<Provider, string[]> = {
@@ -58,6 +60,13 @@ const PROVIDER_STEPS: Record<Provider, string[]> = {
     "登入 Binance → 右上角頭像 → API Management",
     "建立新 API Key(建議選「系統產生」)",
     "權限只勾選「啟用讀取」(Enable Reading),不要勾現貨/合約交易、提領、萬能劃轉等其他權限",
+    "建議同時綁定 IP 白名單,安全性更高",
+    "複製 API Key 與 Secret Key 貼到下方(Secret 只會顯示一次)",
+  ],
+  BINGX: [
+    "登入 BingX → 右上角頭像 → API 管理",
+    "建立新 API Key",
+    "權限只勾選「讀取」,不要勾合約交易、現貨/槓桿交易、萬能劃轉等其他權限",
     "建議同時綁定 IP 白名單,安全性更高",
     "複製 API Key 與 Secret Key 貼到下方(Secret 只會顯示一次)",
   ],
@@ -207,7 +216,7 @@ export function ExchangeConnection() {
 
   const mismatchNotice = assetClassMismatch ? (
     <div className="mb-4 rounded border border-warning bg-warning-bg px-3 py-2.5 text-[0.8rem] leading-relaxed text-warning">
-      這個模板的資產類別是「{ASSET_CLASS_LABEL[assetClassMismatch]}」,Bybit/OKX/Binance
+      這個模板的資產類別是「{ASSET_CLASS_LABEL[assetClassMismatch]}」,Bybit/OKX/Binance/BingX
       都是純加密貨幣交易所,類別對不上。期貨/CFD 類交易所串接(如 Tradovate、
       MT5)還在規劃中,尚未支援——如果只是想在這個模板底下順便記一筆加密貨幣
       交易,連接沒問題;不是的話,建議先不要連。

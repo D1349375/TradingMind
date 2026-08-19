@@ -17,6 +17,12 @@ import {
   type BinanceCredentials,
   type UserTrade,
 } from "@/lib/binance";
+import {
+  getActiveSymbols as getBingxActiveSymbols,
+  getFillOrders,
+  type BingxCredentials,
+  type FillOrder,
+} from "@/lib/bingx";
 
 // Bybit closed-pnl 單次查詢區間上限 7 天(endTime - startTime <= 7 days)。
 // 目前只同步最近 7 天把管線跑通;回補更長歷史要以 7 天為單位往前切,
@@ -67,6 +73,9 @@ export async function syncExchangeTrades(
   }
   if (conn.provider === "BINANCE") {
     return syncBinanceTrades(accountId, userId);
+  }
+  if (conn.provider === "BINGX") {
+    return syncBingxTrades(accountId, userId);
   }
   return syncBybitTrades(accountId, userId);
 }
@@ -321,6 +330,83 @@ async function syncBinanceTrades(accountId: string, userId: string): Promise<Syn
         direction,
         openedAt: null,
         closedAt: new Date(item.time),
+        entryPrice: toDecimalOrZero(item.price),
+        exitPrice: toDecimal(item.price),
+        positionSize: toDecimalOrZero(item.qty),
+        leverage: null,
+        fee: toDecimalOrZero(item.commission).abs(),
+        realizedPnl: toDecimal(item.realizedPnl),
+      },
+    });
+    created += 1;
+  }
+
+  await prisma.exchangeConnection.update({
+    where: { accountId },
+    data: { lastSyncedAt: new Date() },
+  });
+
+  return { fetched: items.length, created, skipped, pages: symbols.length };
+}
+
+// ⚠️ 簡單版,同 syncBinanceTrades 的限制(見 lib/binance.ts /
+// lib/bingx.ts 的說明)——BingX 也沒有「已平倉交易」端點,只有逐筆成交
+// 明細,且欄位名稱參考 CCXT 還沒用真實資料驗證過。之後升級要一起處理。
+async function syncBingxTrades(accountId: string, userId: string): Promise<SyncResult> {
+  const conn = await prisma.exchangeConnection.findUnique({ where: { accountId } });
+  if (!conn) {
+    throw new Error("尚未連接 BingX,請先到設定頁完成連線");
+  }
+
+  const creds: BingxCredentials = {
+    apiKey: decrypt(conn.apiKeyCipher),
+    apiSecret: decrypt(conn.apiSecretCipher),
+  };
+
+  const endTime = Date.now();
+  const startTime = endTime - SYNC_WINDOW_MS;
+
+  const symbols = await getBingxActiveSymbols(creds, { startTime, endTime });
+
+  const items: FillOrder[] = [];
+  for (const symbol of symbols) {
+    const fills = await getFillOrders(creds, { symbol, startTime, endTime, limit: PAGE_LIMIT });
+    items.push(...fills.filter((f) => f.realizedPnl !== "0"));
+  }
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const item of items) {
+    // 同 Binance 的處理:orderId 只在同一個商品內唯一,組合 symbol 才能
+    //保證跟 Trade.exchangeOrderId 的全域 unique 約束相容。
+    const exchangeOrderId = `bingx:${item.symbol}:${item.orderId}`;
+    const existing = await prisma.trade.findUnique({
+      where: { exchangeOrderId },
+      select: { id: true },
+    });
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+
+    const direction: "LONG" | "SHORT" =
+      item.positionSide === "LONG" || item.positionSide === "SHORT"
+        ? item.positionSide
+        : item.side === "BUY"
+          ? "SHORT"
+          : "LONG";
+
+    await prisma.trade.create({
+      data: {
+        userId,
+        accountId,
+        exchangeOrderId,
+        source: "BINGX_SYNC",
+        symbol: item.symbol,
+        direction,
+        openedAt: null,
+        closedAt: new Date(item.filledTime),
         entryPrice: toDecimalOrZero(item.price),
         exitPrice: toDecimal(item.price),
         positionSize: toDecimalOrZero(item.qty),

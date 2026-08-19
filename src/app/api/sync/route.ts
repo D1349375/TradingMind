@@ -5,6 +5,7 @@ import { syncExchangeTrades } from "@/lib/sync";
 import { BybitError } from "@/lib/bybit";
 import { OkxError } from "@/lib/okx";
 import { BinanceError } from "@/lib/binance";
+import { BingxError } from "@/lib/bingx";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // 手動觸發同步(指定某個帳戶模板)。定時排程(pg_cron / inngest)之後會呼叫
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (e) {
     const message =
-      e instanceof BybitError || e instanceof OkxError || e instanceof BinanceError
+      e instanceof BybitError || e instanceof OkxError || e instanceof BinanceError || e instanceof BingxError
         ? e.message
         : e instanceof Error
           ? e.message

@@ -6,12 +6,14 @@ import { decrypt, encrypt, maskApiKey } from "@/lib/crypto";
 import { validateReadOnlyKey as validateBybitKey } from "@/lib/bybit";
 import { validateReadOnlyKey as validateOkxKey } from "@/lib/okx";
 import { validateReadOnlyKey as validateBinanceKey } from "@/lib/binance";
+import { validateReadOnlyKey as validateBingxKey } from "@/lib/bingx";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // 通用交易所連線 route(2026-08-19 從 /api/exchange/bybit 通用化而來)。
-// 每家交易所驗證邏輯不同(見 lib/bybit.ts / lib/okx.ts / lib/binance.ts),
-// 但 CRUD 骨架共用同一支路由,靠 body/query 帶的 provider 分派。
-const PROVIDERS = ["BYBIT", "OKX", "BINANCE"] as const;
+// 每家交易所驗證邏輯不同(見 lib/bybit.ts / lib/okx.ts / lib/binance.ts /
+// lib/bingx.ts),但 CRUD 骨架共用同一支路由,靠 body/query 帶的 provider
+// 分派。
+const PROVIDERS = ["BYBIT", "OKX", "BINANCE", "BINGX"] as const;
 type Provider = (typeof PROVIDERS)[number];
 function isProvider(v: unknown): v is Provider {
   return typeof v === "string" && (PROVIDERS as readonly string[]).includes(v);
@@ -90,8 +92,11 @@ export async function POST(request: NextRequest) {
   } else if (provider === "OKX") {
     const validation = await validateOkxKey({ apiKey, apiSecret, passphrase });
     if (!validation.ok) return NextResponse.json({ error: validation.reason }, { status: 400 });
-  } else {
+  } else if (provider === "BINANCE") {
     const validation = await validateBinanceKey({ apiKey, apiSecret });
+    if (!validation.ok) return NextResponse.json({ error: validation.reason }, { status: 400 });
+  } else {
+    const validation = await validateBingxKey({ apiKey, apiSecret });
     if (!validation.ok) return NextResponse.json({ error: validation.reason }, { status: 400 });
   }
 
