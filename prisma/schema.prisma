@@ -393,10 +393,11 @@ model ChatConversation {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  persona   String // ict/tjr/emperorbtc,同一組人格框架
-  title     String? // 從第一則使用者訊息截斷產生,列表用
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  persona    String // ict/tjr/emperorbtc,同一組人格框架
+  title      String? // 從第一則使用者訊息截斷產生,列表用,使用者可重新命名
+  archivedAt DateTime? // null=進行中;有值=已封存(軟性隱藏,不刪除訊息紀錄)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   messages ChatMessage[]
 

@@ -192,3 +192,47 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true });
 }
+
+// 刪除交易。手動新增的交易(使用者自己打錯/重複)直接刪不用額外門檔;
+// 自動匯入的交易(Bybit同步/CSV)刻意加一道確認——前端要求使用者把
+// 交易商品代碼(symbol)輸入一次才會真的送出刪除請求,這裡在伺服器端
+// 再驗證一次同一件事,不能只靠前端UI擋(使用者可以直接打API跳過對話框)。
+// 這不是防駭客,是防使用者自己一時衝動刪掉不利的真實交易紀錄讓分析
+// 數據失真——跟這個 app「不能用損益反推紀律好壞」同一種誠實原則,只是
+// 這裡用刪除門檔而不是分析規則來體現。
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
+
+  const trade = await prisma.trade.findFirst({
+    where: { id: params.id, userId: user.id },
+    select: { id: true, symbol: true, source: true },
+  });
+  if (!trade) return NextResponse.json({ error: "找不到這筆交易" }, { status: 404 });
+
+  const isAutoImported = trade.source !== "MANUAL";
+  if (isAutoImported) {
+    let body: { confirmSymbol?: unknown } = {};
+    try {
+      body = await request.json();
+    } catch {
+      // 沒帶 body 就當作沒確認,下面統一擋
+    }
+    if (typeof body.confirmSymbol !== "string" || body.confirmSymbol.trim() !== trade.symbol) {
+      return NextResponse.json(
+        {
+          error: "這筆交易是自動匯入的,需要輸入交易商品代碼確認才能刪除",
+          code: "REQUIRES_SYMBOL_CONFIRMATION",
+          source: trade.source,
+          symbol: trade.symbol,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  // CustomFieldValue/TradeRuleCheck 都設了 onDelete:Cascade,交易刪除時
+  // 會自動一起清掉,不用在這裡手動先刪。
+  await prisma.trade.delete({ where: { id: trade.id } });
+  return NextResponse.json({ ok: true });
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const PERSONAS = [
   { key: "ict", label: "ICT" },
@@ -21,6 +22,7 @@ type Result = {
 };
 
 export function AiAnalysis({ tradeId }: { tradeId: string }) {
+  const router = useRouter();
   const [persona, setPersona] = useState<(typeof PERSONAS)[number]["key"]>("ict");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
@@ -45,6 +47,9 @@ export function AiAnalysis({ tradeId }: { tradeId: string }) {
         return;
       }
       setResult(data.result);
+      // 扣款成功,側邊欄的Credit餘額要馬上反映——這個頁面本身沒有導覽,
+      // 不主動refresh的話使用者要等下次點側邊欄連結才會看到新餘額。
+      router.refresh();
     } catch {
       setError("網路錯誤,請稍後再試");
     } finally {

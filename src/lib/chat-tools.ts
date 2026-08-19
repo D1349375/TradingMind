@@ -36,6 +36,15 @@ const TRADE_SELECT = {
   setup: { select: { name: true } },
 } as const;
 
+// 模型自己組出來的日期字串,格式不保證正確(使用者訊息裡的怪輸入也可能
+// 誘導模型傳出無法解析的字串)。無效日期直接當「沒填」處理,不要讓
+// Invalid Date 傳進 Prisma 查詢條件炸掉整輪對話。
+function parseOptionalDate(v: string | undefined): Date | undefined {
+  if (!v) return undefined;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
 function toTradePoint(t: {
   closedAt: Date | null;
   realizedPnl: unknown;
@@ -73,14 +82,17 @@ export async function executeGetTradingSummary(
   params: { periodStart?: string; periodEnd?: string },
 ) {
   const closedAt: { gte?: Date; lte?: Date } = {};
-  if (params.periodStart) closedAt.gte = new Date(params.periodStart);
-  if (params.periodEnd) closedAt.lte = new Date(params.periodEnd);
+  const gte = parseOptionalDate(params.periodStart);
+  const lte = parseOptionalDate(params.periodEnd);
+  if (gte) closedAt.gte = gte;
+  if (lte) closedAt.lte = lte;
+  const hasRange = gte !== undefined || lte !== undefined;
 
   const rows = await prisma.trade.findMany({
     where: {
       userId,
       accountId: tradeAccountFilter(scope.accountIds, scope.isFiltered),
-      ...(params.periodStart || params.periodEnd ? { closedAt } : {}),
+      ...(hasRange ? { closedAt } : {}),
     },
     select: TRADE_SELECT,
   });
@@ -90,7 +102,7 @@ export async function executeGetTradingSummary(
     where: {
       userId,
       accountId: tradeAccountFilter(scope.accountIds, scope.isFiltered),
-      ...(params.periodStart || params.periodEnd ? { closedAt } : {}),
+      ...(hasRange ? { closedAt } : {}),
     },
     select: { ruleChecks: { select: { checked: true } }, setup: { select: { name: true } }, realizedPnl: true },
   });
@@ -157,8 +169,13 @@ export async function executeSearchTrades(
   },
 ) {
   const closedAt: { gte?: Date; lte?: Date } = {};
-  if (params.periodStart) closedAt.gte = new Date(params.periodStart);
-  if (params.periodEnd) closedAt.lte = new Date(params.periodEnd);
+  const gte = parseOptionalDate(params.periodStart);
+  const lte = parseOptionalDate(params.periodEnd);
+  if (gte) closedAt.gte = gte;
+  if (lte) closedAt.lte = lte;
+  const hasRange = gte !== undefined || lte !== undefined;
+  // limit 上限50、下限1——防的是模型被誘導傳一個誇張的數字(例如
+  // 「回傳100000筆」)硬灌大量資料進context,不管使用者訊息裡怎麼要求。
   const limit = Math.min(Math.max(params.limit ?? 20, 1), 50);
 
   const pnlFilter = params.onlyLosses ? { lt: 0 } : params.onlyWins ? { gt: 0 } : undefined;
@@ -167,7 +184,7 @@ export async function executeSearchTrades(
     where: {
       userId,
       accountId: tradeAccountFilter(scope.accountIds, scope.isFiltered),
-      ...(params.periodStart || params.periodEnd ? { closedAt } : {}),
+      ...(hasRange ? { closedAt } : {}),
       ...(params.symbol ? { symbol: params.symbol } : {}),
       ...(params.direction ? { direction: params.direction } : {}),
       ...(pnlFilter ? { realizedPnl: pnlFilter } : {}),
@@ -206,12 +223,22 @@ export const GET_DISCIPLINE_AND_BEHAVIOR_SCHEMA = {
 export async function executeGetDisciplineAndBehavior(userId: string, scope: AccountScope) {
   const [rules, behaviorRows, tradeRows, goals] = await Promise.all([
     prisma.disciplineRule.findMany({ where: { userId, active: true }, select: { label: true, isAutoDetected: true } }),
-    prisma.behaviorDetectionSetting.findMany({ where: { userId } }),
+    // 這兩個查詢下面的程式碼本來就只會逐欄位取值(不會 ...row 整包展開),
+    // 現在不存在洩漏風險,但明確列 select 是這個檔案的一貫做法——之後
+    // schema 加欄位時,不用重新追一遍消費端邏輯才能確認安全,看 select
+    // 就知道這支工具能拿到什麼。
+    prisma.behaviorDetectionSetting.findMany({
+      where: { userId },
+      select: { kind: true, enabled: true, threshold: true },
+    }),
     prisma.trade.findMany({
       where: { userId, accountId: tradeAccountFilter(scope.accountIds, scope.isFiltered) },
       select: { closedAt: true, openedAt: true, realizedPnl: true, positionSize: true, entryPrice: true },
     }),
-    prisma.goal.findMany({ where: { accountId: { in: scope.accountIds } } }),
+    prisma.goal.findMany({
+      where: { accountId: { in: scope.accountIds } },
+      select: { lossLimitMode: true, dailyLossFixed: true, dailyLossPercent: true, totalCapital: true, profitTargetAmount: true },
+    }),
   ]);
 
   const byKind = new Map(behaviorRows.map((r) => [r.kind, r]));
@@ -261,7 +288,10 @@ export async function executeGetAccountSettings(userId: string, scope: AccountSc
         bybitConnection: { select: { id: true, lastSyncedAt: true } },
       },
     }),
-    prisma.goal.findMany({ where: { accountId: { in: scope.accountIds } } }),
+    prisma.goal.findMany({
+      where: { accountId: { in: scope.accountIds } },
+      select: { lossLimitMode: true, dailyLossFixed: true, dailyLossPercent: true, totalCapital: true },
+    }),
     prisma.customFieldDefinition.findMany({ where: { userId }, select: { key: true, label: true, fieldType: true } }),
   ]);
 
@@ -303,16 +333,24 @@ export async function executeTool(
   userId: string,
   scope: AccountScope,
 ): Promise<object> {
-  switch (name) {
-    case "get_trading_summary":
-      return executeGetTradingSummary(userId, scope, input as { periodStart?: string; periodEnd?: string });
-    case "search_trades":
-      return executeSearchTrades(userId, scope, input);
-    case "get_discipline_and_behavior":
-      return executeGetDisciplineAndBehavior(userId, scope);
-    case "get_account_settings":
-      return executeGetAccountSettings(userId, scope);
-    default:
-      return { error: `未知的工具:${name}` };
+  try {
+    switch (name) {
+      case "get_trading_summary":
+        return await executeGetTradingSummary(userId, scope, input as { periodStart?: string; periodEnd?: string });
+      case "search_trades":
+        return await executeSearchTrades(userId, scope, input);
+      case "get_discipline_and_behavior":
+        return await executeGetDisciplineAndBehavior(userId, scope);
+      case "get_account_settings":
+        return await executeGetAccountSettings(userId, scope);
+      default:
+        return { error: `未知的工具:${name}` };
+    }
+  } catch {
+    // 任何查詢失敗(不管是壞掉的參數還是其他原因)都不能讓例外往上炸開
+    // 整輪對話——那樣不只浪費掉這輪已經花掉的真實API成本,還可能把
+    // Prisma的原始錯誤訊息(可能帶表名/欄位名等內部細節)原樣回給前端。
+    // 回一個籠統的錯誤結果讓模型自己決定怎麼跟使用者說。
+    return { error: "查詢這項資料時發生問題,請換個方式再問一次" };
   }
 }

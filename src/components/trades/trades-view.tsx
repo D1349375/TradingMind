@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CustomFields,
   type FieldDef,
@@ -356,6 +357,7 @@ function TradeDetail({
   onToggleList: () => void;
   onClose?: () => void;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<DetailTab>("overview");
   const local = useLocalTime();
   const [note, setNote] = useState(trade.reflectionNote ?? "");
@@ -368,6 +370,16 @@ function TradeDetail({
   // 所以做成可收合——收合後只留標題列,記錄editor拿到全部空間。
   const [fieldsCollapsed, setFieldsCollapsed] = useState(false);
 
+  // 刪除交易:手動新增的交易只要一般確認,自動匯入的(Bybit同步/CSV)
+  // 要求輸入商品代碼再次確認才能刪除——防的是使用者一時衝動刪掉不利的
+  // 真實交易紀錄。伺服器端(/api/trades/[id] DELETE)有一樣的門檔,這裡
+  // 的輸入框驗證只是體驗層面,不是唯一防線。
+  const isAutoImported = trade.source !== "MANUAL";
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   async function save(payload: Record<string, unknown>) {
     setSaveState("saving");
     try {
@@ -379,6 +391,29 @@ function TradeDetail({
       setSaveState(res.ok ? "saved" : "error");
     } catch {
       setSaveState("error");
+    }
+  }
+
+  async function confirmDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/trades/${trade.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isAutoImported ? { confirmSymbol: deleteConfirmInput.trim() } : {}),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setDeleteError(data.error ?? "刪除失敗");
+        return;
+      }
+      setShowDeleteDialog(false);
+      router.refresh();
+    } catch {
+      setDeleteError("網路錯誤,請稍後再試");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -433,20 +468,37 @@ function TradeDetail({
           }}
           onCreated={onSetupCreated}
         />
-        {onClose && (
+        <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
-            onClick={onClose}
-            title="關閉比較"
-            aria-label="關閉比較"
-            className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border text-text-secondary hover:border-loss hover:text-loss"
+            onClick={() => {
+              setDeleteConfirmInput("");
+              setDeleteError(null);
+              setShowDeleteDialog(true);
+            }}
+            title="刪除這筆交易"
+            aria-label="刪除這筆交易"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border text-text-secondary hover:border-loss hover:text-loss"
           >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-3.5 w-3.5">
-              <line x1="5" y1="5" x2="15" y2="15" />
-              <line x1="15" y1="5" x2="5" y2="15" />
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+              <path d="M4.5 5.5h11M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M6 5.5l.6 10a1 1 0 0 0 1 1h4.8a1 1 0 0 0 1-1l.6-10" />
             </svg>
           </button>
-        )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              title="關閉比較"
+              aria-label="關閉比較"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border text-text-secondary hover:border-loss hover:text-loss"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-3.5 w-3.5">
+                <line x1="5" y1="5" x2="15" y2="15" />
+                <line x1="15" y1="5" x2="5" y2="15" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
       <div
         className="mb-4 text-[0.87rem] text-text-secondary"
@@ -714,6 +766,63 @@ function TradeDetail({
           />
         </div>
       </section>
+
+      {showDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-[440px] rounded border border-border bg-surface p-5">
+            <h3 className="mb-2 text-[1.02rem] font-semibold text-text">刪除交易紀錄</h3>
+            {isAutoImported ? (
+              <>
+                <p className="mb-3 text-[0.85rem] leading-relaxed text-text-secondary">
+                  這筆 <span className="font-semibold text-text">{trade.symbol}</span> 交易是由{" "}
+                  <span className="font-semibold text-text">
+                    {trade.source === "BYBIT_SYNC" ? "Bybit API 自動同步" : "CSV 匯入"}
+                  </span>{" "}
+                  的真實交易紀錄。刪除已經匯入的交易可能讓你的統計分析失真,也違背這個工具「誠實面對自己交易行為」的目的——如果只是想排除某筆交易的統計,考慮改用反思筆記記錄原因,而不是刪除。
+                </p>
+                <p className="mb-1.5 text-[0.8rem] text-text-secondary">
+                  請輸入商品代碼「<span className="font-semibold text-text">{trade.symbol}</span>」確認刪除:
+                </p>
+                <input
+                  autoFocus
+                  value={deleteConfirmInput}
+                  onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                  placeholder={trade.symbol}
+                  className="w-full rounded border border-border bg-canvas px-3 py-2 text-[0.85rem] outline-none focus:border-accent"
+                />
+              </>
+            ) : (
+              <p className="mb-3 text-[0.85rem] leading-relaxed text-text-secondary">
+                確定要刪除這筆 {trade.symbol} 交易紀錄嗎?此動作無法復原。
+              </p>
+            )}
+
+            {deleteError && (
+              <div role="alert" className="mt-3 rounded border border-loss bg-loss-bg px-3 py-2 text-[0.8rem] text-loss">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteDialog(false)}
+                className="rounded border border-border bg-canvas px-3.5 py-1.5 text-[0.82rem] text-text-secondary hover:border-accent hover:text-accent"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting || (isAutoImported && deleteConfirmInput.trim() !== trade.symbol)}
+                className="rounded bg-loss px-3.5 py-1.5 text-[0.82rem] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {deleting ? "刪除中…" : "確定刪除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

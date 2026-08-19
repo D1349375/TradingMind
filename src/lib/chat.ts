@@ -42,6 +42,12 @@ Setup值得繼續用嗎」),你要用這個人格的口吻,基於真實資料回
 
 const MAX_TOOL_ITERATIONS = 4;
 
+// 防的是使用者直接在訊息裡要求「查100次」「重複確認1000遍」這類誘導
+// 模型在單一輪裡瘋狂發工具呼叫的prompt——MAX_TOOL_ITERATIONS只擋得住
+// 「跨輪」的次數,擋不住模型在同一輪一次吐出一大堆tool_use block。
+// 超過上限的呼叫直接回錯誤訊息,不執行也不算進toolCallLog。
+const MAX_TOOL_CALLS_PER_ITERATION = 6;
+
 export class ChatNotConfiguredError extends Error {}
 
 export type ChatToolCallLog = { name: string; input: Record<string, unknown> };
@@ -66,12 +72,25 @@ export async function runPersonaChat(opts: {
   ];
 
   type ContentBlock =
-    | { type: "text"; text: string }
+    | { type: "text"; text: string; cache_control?: { type: "ephemeral" } }
     | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
     | { type: "tool_result"; tool_use_id: string; content: string };
 
+  // 多輪對話每次呼叫都要把完整歷史重送一次——沒有快取的話,對話越長,
+  // 每一輪都要用「未快取」原價重付一次逐漸變長的歷史,成本隨對話長度
+  // 線性增加。把快取斷點放在「上一輪最後一則訊息」上:下一次呼叫時,
+  // 這個斷點之前(system prompt+全部先前歷史)會被視為同一份前綴命中
+  // 快取,只有這一輪新增的內容用原價計費。歷史太短(遠低於~1024
+  // token)時斷點不會真的命中快取,但不影響正確性,單純沒有省到而已。
+  const lastHistoryIndex = opts.history.length - 1;
   const messages: { role: "user" | "assistant"; content: string | ContentBlock[] }[] = [
-    ...opts.history.map((h) => ({ role: h.role, content: h.content })),
+    ...opts.history.map((h, i) => ({
+      role: h.role,
+      content:
+        i === lastHistoryIndex
+          ? [{ type: "text" as const, text: h.content, cache_control: { type: "ephemeral" as const } }]
+          : h.content,
+    })),
     { role: "user" as const, content: opts.userMessage },
   ];
 
@@ -125,12 +144,32 @@ export async function runPersonaChat(opts: {
     // 下一輪的 user 訊息接回去,繼續迴圈。
     messages.push({ role: "assistant", content });
 
+    // 同一名稱+同一輸入的重複呼叫只真的執行一次,其餘沿用同一個結果——
+    // 擋的是「查詢同一筆資料100次」這種浪費(DB壓力),不是省LLM本身的
+    // token(那由下面的次數上限跟外層的MAX_TOOL_ITERATIONS一起擋)。
+    const toolUseBlocks = content.filter(
+      (b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use",
+    );
+    const resultCache = new Map<string, unknown>();
     const toolResults: ContentBlock[] = [];
-    for (const block of content) {
-      if (block.type !== "tool_use") continue;
-      toolCallLog.push({ name: block.name, input: block.input });
-      const result = await executeTool(block.name, block.input, opts.userId, opts.scope);
-      toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+    for (const [index, block] of toolUseBlocks.entries()) {
+      if (index >= MAX_TOOL_CALLS_PER_ITERATION) {
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: JSON.stringify({
+            error: "本輪工具呼叫次數已達上限,請根據目前已取得的資料直接回答,不要再繼續查詢",
+          }),
+        });
+        continue;
+      }
+      const cacheKey = `${block.name}:${JSON.stringify(block.input)}`;
+      if (!resultCache.has(cacheKey)) {
+        toolCallLog.push({ name: block.name, input: block.input });
+        const result = await executeTool(block.name, block.input, opts.userId, opts.scope);
+        resultCache.set(cacheKey, result);
+      }
+      toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(resultCache.get(cacheKey)) });
     }
     messages.push({ role: "user", content: toolResults });
   }

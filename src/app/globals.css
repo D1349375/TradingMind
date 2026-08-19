@@ -153,6 +153,48 @@ body {
   border-color: var(--accent);
 }
 
+/* ============ AI 問答回覆(Markdown) ============
+   人格回覆常帶 **粗體**/清單/`inline code`(例如引用欄位名稱),原本用
+   whitespace-pre-wrap純文字顯示,符號會原樣露出來。改用 react-markdown
+   解析,樣式沿用 .prose-note 同一套字級/間距語言,不要另起爐灶。 */
+.prose-chat > *:first-child {
+  margin-top: 0;
+}
+.prose-chat > *:last-child {
+  margin-bottom: 0;
+}
+.prose-chat p {
+  margin: 0.5em 0;
+}
+.prose-chat strong {
+  font-weight: 700;
+}
+.prose-chat ul {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+  list-style: disc;
+}
+.prose-chat ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+  list-style: decimal;
+}
+.prose-chat li {
+  margin: 0.2em 0;
+}
+.prose-chat code {
+  border-radius: 0.25rem;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+.prose-chat a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
