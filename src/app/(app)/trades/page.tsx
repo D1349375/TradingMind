@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAccountScope } from "@/lib/account-filter";
+import { resolveTradeVisibilityCutoff } from "@/lib/tier-limits";
 import { TradesView, type TradeDto } from "@/components/trades/trades-view";
 import { AddTradeForm } from "@/components/trades/add-trade-form";
 import { ImportCsvForm } from "@/components/trades/import-csv-form";
@@ -12,17 +13,19 @@ export const metadata: Metadata = {
 
 export default async function TradesPage() {
   const user = await getCurrentUser();
-  const scope = await resolveAccountScope(user!.id);
+  const scope = await resolveAccountScope(user!.id, user!.subscriptionTier);
+  const cutoff = await resolveTradeVisibilityCutoff(user!.id, user!.subscriptionTier);
 
   // 目前一次載入全部。筆數變多之後要改成分頁或虛擬捲動,
   // 現階段(數十筆)這樣最單純。
-  const [rows, fieldDefs, setups, rules] = await Promise.all([
+  const [rows, hiddenCount, fieldDefs, setups, rules] = await Promise.all([
     prisma.trade.findMany({
       // 沒有主動篩選時不加 accountId 條件,才會包含模板被刪除後留下的
       // 「未分類」交易(accountId=null)——見 lib/page-cache.ts 開頭說明。
       where: {
         userId: user!.id,
         accountId: scope.isFiltered ? { in: scope.accountIds } : undefined,
+        closedAt: cutoff ? { gte: cutoff } : undefined,
       },
       orderBy: { closedAt: "desc" },
       include: {
@@ -30,6 +33,18 @@ export default async function TradesPage() {
         ruleChecks: { select: { ruleId: true, checked: true } },
       },
     }),
+    // FREE 方案被藏起來的筆數——同步/匯入照常寫入資料庫,只是查詢範圍
+    // 被擋住(見 lib/tier-limits.ts),這裡算出來給使用者一個明確交代,
+    // 不能悄悄消失不解釋。
+    cutoff
+      ? prisma.trade.count({
+          where: {
+            userId: user!.id,
+            accountId: scope.isFiltered ? { in: scope.accountIds } : undefined,
+            closedAt: { lt: cutoff },
+          },
+        })
+      : Promise.resolve(0),
     prisma.customFieldDefinition.findMany({
       where: { userId: user!.id },
       orderBy: { sortOrder: "asc" },
@@ -97,6 +112,16 @@ export default async function TradesPage() {
           <AddTradeForm />
         </div>
       </div>
+      {hiddenCount > 0 && (
+        <div className="mb-3 rounded border border-warning bg-warning-bg px-3 py-2 text-[0.8rem] leading-relaxed text-warning">
+          FREE 方案只能查看最近 {trades.length} 筆交易,還有 {hiddenCount}{" "}
+          筆更早的交易已經記錄在系統裡(不會遺失),
+          <a href="/settings?tab=subscription" className="underline">
+            升級訂閱方案
+          </a>{" "}
+          即可查看完整紀錄。
+        </div>
+      )}
       <TradesView
         trades={trades}
         fields={fields}

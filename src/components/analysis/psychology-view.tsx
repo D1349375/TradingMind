@@ -7,6 +7,7 @@ import {
 } from "@/lib/behavior-detection";
 import { DETECTION_DEFS } from "@/lib/behavior-presets";
 import { disciplineComplianceRate } from "@/lib/stats";
+import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
 
 // 對應 prototype 的心態分析頁。
 //
@@ -39,6 +40,7 @@ export function PsychologyView({
   behaviorSettings,
   totalCapital,
   showBybitHint,
+  tier,
 }: {
   trades: PsychTrade[];
   hasEmotionField: boolean;
@@ -46,6 +48,7 @@ export function PsychologyView({
   behaviorSettings: BehaviorSetting[];
   totalCapital: number | null;
   showBybitHint: boolean;
+  tier: "FREE" | "STANDARD" | "ADVANCED";
 }) {
   const stats = useMemo(() => {
     const settled = trades
@@ -177,6 +180,12 @@ export function PsychologyView({
         />
       </div>
 
+      {tier === "FREE" ? (
+        <div className="mb-4">
+          <UpgradePrompt feature="紀律遵守率、情緒 × 損益交叉分析、行為偵測" />
+        </div>
+      ) : (
+        <>
       <div className="mb-4 grid grid-cols-2 gap-4">
         <Card title="紀律遵守率">
           {ruleCount === 0 ? (
@@ -279,6 +288,8 @@ export function PsychologyView({
         behaviorSettings={behaviorSettings}
         totalCapital={totalCapital}
       />
+        </>
+      )}
 
       <div className="rounded border border-border bg-surface px-4 py-4">
         <h3 className="mb-3 text-[0.82rem] font-semibold text-text-secondary">

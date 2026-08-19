@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getSetupPageData } from "@/lib/page-cache";
 import { resolveAccountScope, resolveAssetClassMix, canSuggestExchangeSync } from "@/lib/account-filter";
+import { resolveTradeVisibilityCutoff } from "@/lib/tier-limits";
 import { SetupView } from "@/components/analysis/setup-view";
 
 export const metadata: Metadata = {
@@ -10,9 +11,10 @@ export const metadata: Metadata = {
 
 export default async function SetupPage() {
   const user = await getCurrentUser();
-  const scope = await resolveAccountScope(user!.id);
+  const scope = await resolveAccountScope(user!.id, user!.subscriptionTier);
+  const cutoff = await resolveTradeVisibilityCutoff(user!.id, user!.subscriptionTier);
   const [{ trades, enabledFieldKeys }, assetClassMix] = await Promise.all([
-    getSetupPageData(user!.id, scope.accountIds, scope.isFiltered),
+    getSetupPageData(user!.id, scope.accountIds, scope.isFiltered, cutoff?.toISOString() ?? null),
     resolveAssetClassMix(scope.accountIds),
   ]);
 
@@ -29,6 +31,7 @@ export default async function SetupPage() {
           trades={trades}
           enabledFieldKeys={enabledFieldKeys}
           showBybitHint={canSuggestExchangeSync(assetClassMix.classes)}
+          tier={user!.subscriptionTier}
         />
       </div>
     </div>

@@ -8,6 +8,7 @@ import { resolveAccountScope } from "@/lib/account-filter";
 import { runPersonaChat, ChatNotConfiguredError } from "@/lib/chat";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
+import { requiresPaidTier } from "@/lib/tier-limits";
 
 // 開放式人格問答(TradeMind_開放式人格問答_技術設計.md)。這支路由建立
 // 新對話(第一則訊息);既有對話的後續訊息走 /api/chat/[id]。
@@ -33,6 +34,9 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
+
+  const tierCheck = requiresPaidTier(user.subscriptionTier);
+  if (tierCheck.blocked) return NextResponse.json({ error: tierCheck.error }, { status: 403 });
 
   const rl = await checkRateLimit("chat-message", user.id, { limit: 20, windowSeconds: 3600 });
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterSeconds);
@@ -66,7 +70,7 @@ export async function POST(request: NextRequest) {
   }
   const spend = planCreditSpend(available, CREDIT_COST);
 
-  const scope = await resolveAccountScope(user.id);
+  const scope = await resolveAccountScope(user.id, user.subscriptionTier);
 
   let result;
   try {

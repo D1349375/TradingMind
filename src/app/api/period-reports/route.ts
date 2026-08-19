@@ -14,11 +14,17 @@ import { resolveAccountScope, resolveAssetClassMix } from "@/lib/account-filter"
 import { tradeAccountFilter, resolveGoalState } from "@/lib/page-cache";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
+import { requiresPaidTier } from "@/lib/tier-limits";
+import { addMonths } from "@/lib/subscriptions";
 
-// 週報/月報產生。額度這次先純 Credit 扣款,不分訂閱層級(見
-// lib/period-report.ts 開頭說明;規劃書寫「進階訂閱獨家」,但系統目前完全
-// 沒有訂閱層級能讓任何人變成進階,先不做 tier 檢查,靠 Credit 餘額擋)。
-const CREDIT_COST = { WEEK: 8, MONTH: 20 } as const;
+// 週報/月報產生。2026-08-19 訂閱制上線後接上真正的分層定價(見
+// `TradeMind_Credit定價與營收策略.md`第五節):FREE整個功能擋掉、
+// STANDARD全額付費、ADVANCED每個訂閱週期(用Subscription.currentPeriodEnd
+// 往前推一個月當作這期的起點,不是額外開一個計數器欄位)有「2次週報+1次
+// 月報」免費額度,用完後才跟STANDARD一樣付費(但費率較低)。
+const STANDARD_COST = { WEEK: 12, MONTH: 30 } as const;
+const ADVANCED_OVERAGE_COST = { WEEK: 8, MONTH: 20 } as const;
+const ADVANCED_INCLUDED_QUOTA = { WEEK: 2, MONTH: 1 } as const;
 
 function toTradeRow(t: {
   closedAt: Date | null;
@@ -47,6 +53,9 @@ function toTradeRow(t: {
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
+
+  const tierCheck = requiresPaidTier(user.subscriptionTier);
+  if (tierCheck.blocked) return NextResponse.json({ error: tierCheck.error }, { status: 403 });
 
   const rl = await checkRateLimit("period-report", user.id, { limit: 5, windowSeconds: 3600 });
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterSeconds);
@@ -79,7 +88,7 @@ export async function POST(request: NextRequest) {
   }
   const utcOffsetMinutes = typeof body.utcOffsetMinutes === "number" ? body.utcOffsetMinutes : 0;
 
-  const scope = await resolveAccountScope(user.id);
+  const scope = await resolveAccountScope(user.id, user.subscriptionTier);
   const accountId = tradeAccountFilter(scope.accountIds, scope.isFiltered);
   const prior = getPriorRange(periodType, periodStart);
 
@@ -161,8 +170,28 @@ export async function POST(request: NextRequest) {
     enabledFieldKeys,
   });
 
-  // 1. 預檢查額度,先擋掉沒錢的請求,不浪費一次 LLM 呼叫
-  const creditCost = CREDIT_COST[periodType];
+  // 1. 算這次要扣多少 Credit——STANDARD 全額付費;ADVANCED 這個訂閱週期
+  // 內還有免費額度就是 0,額度用完才用比較低的超額費率。週期起點用
+  // Subscription.currentPeriodEnd 往前推一個月,不用另外開計數器欄位。
+  let creditCost: number;
+  let creditReasonSuffix = "";
+  if (user.subscriptionTier === "ADVANCED") {
+    const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
+    const cycleStart = sub?.currentPeriodEnd ? addMonths(sub.currentPeriodEnd, -1) : new Date(0);
+    const usedThisCycle = await prisma.periodReport.count({
+      where: { userId: user.id, periodType, createdAt: { gte: cycleStart } },
+    });
+    if (usedThisCycle < ADVANCED_INCLUDED_QUOTA[periodType]) {
+      creditCost = 0;
+      creditReasonSuffix = "_included";
+    } else {
+      creditCost = ADVANCED_OVERAGE_COST[periodType];
+      creditReasonSuffix = "_overage";
+    }
+  } else {
+    creditCost = STANDARD_COST[periodType];
+  }
+
   const available = await getSpendableBalance(user.id);
   if (!available || available.total < creditCost) {
     return NextResponse.json(
@@ -209,7 +238,7 @@ export async function POST(request: NextRequest) {
       user.id,
       spend,
       creditCost,
-      periodType === "WEEK" ? "period_report_week" : "period_report_month",
+      `${periodType === "WEEK" ? "period_report_week" : "period_report_month"}${creditReasonSuffix}`,
     ),
   ]);
 

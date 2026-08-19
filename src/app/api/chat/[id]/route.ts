@@ -7,6 +7,7 @@ import { resolveAccountScope } from "@/lib/account-filter";
 import { runPersonaChat, ChatNotConfiguredError } from "@/lib/chat";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
+import { requiresPaidTier } from "@/lib/tier-limits";
 
 const CREDIT_COST = 3; // 2026-08-19 定案,同 /api/chat/route.ts 說明
 const MAX_MESSAGE_LENGTH = 2000;
@@ -35,6 +36,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
+
+  const tierCheck = requiresPaidTier(user.subscriptionTier);
+  if (tierCheck.blocked) return NextResponse.json({ error: tierCheck.error }, { status: 403 });
 
   const rl = await checkRateLimit("chat-message", user.id, { limit: 20, windowSeconds: 3600 });
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterSeconds);
@@ -81,7 +85,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
   const spend = planCreditSpend(available, CREDIT_COST);
 
-  const scope = await resolveAccountScope(user.id);
+  const scope = await resolveAccountScope(user.id, user.subscriptionTier);
   const history = conversation.messages.map((m) => ({
     role: m.role === "USER" ? ("user" as const) : ("assistant" as const),
     content: m.content,

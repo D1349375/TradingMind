@@ -17,6 +17,7 @@ import {
   type DateRangeValue,
 } from "@/components/dashboard/date-range-select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
 
 function fmt(n: number, digits = 2) {
   return n.toLocaleString("en-US", {
@@ -41,12 +42,14 @@ export function DashboardView({
   lastSyncedText,
   assetClassMixed,
   showBybitHint,
+  tier,
 }: {
   trades: NamedTradePoint[];
   goals: GoalState | null;
   lastSyncedText: string;
   assetClassMixed: boolean;
   showBybitHint: boolean;
+  tier: "FREE" | "STANDARD" | "ADVANCED";
 }) {
   const [tab, setTab] = useState<DashTab>("overview");
   const [range, setRange] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
@@ -149,19 +152,30 @@ export function DashboardView({
               選取的區間內沒有交易資料。
             </div>
           )}
-          {/* 回撤緩衝/獲利目標是即時風控狀態,固定看「今日/本月」,不隨上方區間篩選變動 */}
+          {/* 回撤緩衝/獲利目標是即時風控狀態,固定看「今日/本月」,不隨上方區間篩選變動——
+              不分方案都看得到,這是風控安全機制不是分析洞察層,不適用分級鎖。 */}
           <div suppressHydrationWarning>
             {mounted && (
               <GoalCards goals={goals} todayLoss={todayLoss} monthPnl={monthPnl} />
             )}
           </div>
-          <div className="mb-4 grid grid-cols-[1.4fr_1fr] gap-4">
-            <EquityChart curve={curve} />
-            <WinLossCard summary={summary} />
-          </div>
+          {/* 權益曲線/盈虧佔比是「分析洞察」層,FREE 只給 StatGrid+日曆(基本數字),
+              STANDARD/ADVANCED 才解鎖——見規劃書 Credit定價文件第五節分層設計。 */}
+          {tier === "FREE" ? (
+            <div className="mb-4">
+              <UpgradePrompt feature="權益曲線與盈虧佔比圖表" />
+            </div>
+          ) : (
+            <div className="mb-4 grid grid-cols-[1.4fr_1fr] gap-4">
+              <EquityChart curve={curve} />
+              <WinLossCard summary={summary} />
+            </div>
+          )}
           {/* 日曆卡有自己的月份導覽,同樣不受上方區間篩選影響 */}
           <CalendarCard trades={trades} />
         </>
+      ) : tier !== "ADVANCED" ? (
+        <UpgradePrompt feature="績效分析頁(風險調整報酬指標、破產風險模擬等)" requiredTier="ADVANCED" />
       ) : (
         <PerformanceView
           trades={filteredTrades}

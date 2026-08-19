@@ -189,7 +189,7 @@ export function Sidebar({
   pendingReview: number;
   recentTrades: { closedAt: string | null; realizedPnl: number | null }[];
   goal: GoalForAlert;
-  accountFilter: { accountIds: string[]; allAccountIds: string[] };
+  accountFilter: { accountIds: string[]; allAccountIds: string[]; mergeAllowed: boolean };
 }) {
   const pathname = usePathname();
   const [scale, setScale] = useState("15.5");
@@ -423,6 +423,7 @@ export function Sidebar({
           allAccountIds={accountFilter.allAccountIds}
           selectedAccountIds={accountFilter.accountIds}
           collapsed={collapsed}
+          mergeAllowed={accountFilter.mergeAllowed}
         />
         <div className={`flex items-center px-2 py-[5px] ${collapsed ? "flex-col gap-2" : "justify-between"}`}>
           <span

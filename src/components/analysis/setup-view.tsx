@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { sampleTier, SAMPLE_TIER_LABEL } from "@/lib/stats";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
 
 // 對應 prototype 的 Setup 分析頁:Setup 排行 + 依維度比較。
 
@@ -192,10 +193,12 @@ export function SetupView({
   trades,
   enabledFieldKeys,
   showBybitHint,
+  tier,
 }: {
   trades: AnalysisTrade[];
   enabledFieldKeys: string[];
   showBybitHint: boolean;
+  tier: "FREE" | "STANDARD" | "ADVANCED";
 }) {
   const [dim, setDim] = useState<string>("symbol");
   const [setupSort, setSetupSort] = useState<RowSortKey>("pnl");
@@ -386,7 +389,11 @@ export function SetupView({
         )}
       </section>
 
-      <CrossAnalysisSection trades={trades} enabledFieldKeys={enabledFieldKeys} />
+      {tier === "FREE" ? (
+        <UpgradePrompt feature="二維交叉分析" />
+      ) : (
+        <CrossAnalysisSection trades={trades} enabledFieldKeys={enabledFieldKeys} />
+      )}
     </>
   );
 }

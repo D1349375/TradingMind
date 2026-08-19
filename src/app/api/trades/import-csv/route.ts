@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getOwnedAccount } from "@/lib/accounts";
 import { prisma } from "@/lib/prisma";
 import { parseBybitCsv } from "@/lib/bybit-csv";
+import { canStoreMoreTrades, FREE_STORED_TRADES } from "@/lib/tier-limits";
 
 const CLOSE_TOLERANCE = 0.005; // 浮點/CSV 轉出時的四捨五入誤差容許範圍
 
@@ -39,6 +40,18 @@ export async function POST(request: NextRequest) {
   }
 
   const { rows, errors } = parseBybitCsv(body.csvText, utcOffsetMinutes);
+
+  // FREE 方案的儲存上限(見 lib/tier-limits.ts)——CSV 是「一次性大量匯入」
+  // 濫用情境的主要入口,拿去重複判斷前先用最壞情況(rows.length 筆全部都
+  // 不是重複)檢查一次,避免匯到一半才發現超額、留下不上不下的部分匯入。
+  if (!(await canStoreMoreTrades(user.id, user.subscriptionTier, rows.length))) {
+    return NextResponse.json(
+      {
+        error: `這批 CSV 有 ${rows.length} 筆交易,可能會超過 FREE 方案 ${FREE_STORED_TRADES} 筆的儲存上限,升級訂閱方案即可匯入`,
+      },
+      { status: 403 },
+    );
+  }
 
   let imported = 0;
   let skippedDuplicates = 0;

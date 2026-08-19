@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getPsychologyData } from "@/lib/page-cache";
 import { resolveAccountScope, resolveAssetClassMix, canSuggestExchangeSync } from "@/lib/account-filter";
+import { resolveTradeVisibilityCutoff } from "@/lib/tier-limits";
 import { PsychologyView } from "@/components/analysis/psychology-view";
 import { DETECTION_DEFS } from "@/lib/behavior-presets";
 
@@ -11,12 +12,13 @@ export const metadata: Metadata = {
 
 export default async function PsychologyPage() {
   const user = await getCurrentUser();
-  const scope = await resolveAccountScope(user!.id);
+  const scope = await resolveAccountScope(user!.id, user!.subscriptionTier);
+  const cutoff = await resolveTradeVisibilityCutoff(user!.id, user!.subscriptionTier);
   const [
     { trades, hasEmotionField, ruleCount, behaviorRows, totalCapital },
     assetClassMix,
   ] = await Promise.all([
-    getPsychologyData(user!.id, scope.accountIds, scope.isFiltered),
+    getPsychologyData(user!.id, scope.accountIds, scope.isFiltered, cutoff?.toISOString() ?? null),
     resolveAssetClassMix(scope.accountIds),
   ]);
 
@@ -46,6 +48,7 @@ export default async function PsychologyPage() {
           behaviorSettings={behaviorSettings}
           totalCapital={totalCapital}
           showBybitHint={canSuggestExchangeSync(assetClassMix.classes)}
+          tier={user!.subscriptionTier}
         />
       </div>
     </div>

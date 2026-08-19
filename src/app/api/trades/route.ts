@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getOwnedAccount } from "@/lib/accounts";
 import { prisma } from "@/lib/prisma";
 import { calcRMultiple } from "@/lib/r-multiple";
+import { canStoreMoreTrades, FREE_STORED_TRADES } from "@/lib/tier-limits";
 
 const DIRECTIONS = ["LONG", "SHORT"];
 
@@ -18,6 +19,15 @@ function requiredNum(v: unknown): number | null {
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "未登入" }, { status: 401 });
+
+  // FREE 方案的儲存上限(見 lib/tier-limits.ts)——這裡擋的是手動新增,
+  // 不是交易所自動同步,同步一律照常寫入不受這個限制。
+  if (!(await canStoreMoreTrades(user.id, user.subscriptionTier, 1))) {
+    return NextResponse.json(
+      { error: `FREE 方案最多能儲存 ${FREE_STORED_TRADES} 筆交易,升級訂閱方案即可繼續新增` },
+      { status: 403 },
+    );
+  }
 
   let body: Record<string, unknown>;
   try {

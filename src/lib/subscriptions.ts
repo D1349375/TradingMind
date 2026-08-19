@@ -79,8 +79,12 @@ export function activateSubscriptionOps(params: {
   ] as const;
 }
 
-export function addOneMonth(date: Date): Date {
+export function addMonths(date: Date, months: number): Date {
   const d = new Date(date);
-  d.setMonth(d.getMonth() + 1);
+  d.setMonth(d.getMonth() + months);
   return d;
+}
+
+export function addOneMonth(date: Date): Date {
+  return addMonths(date, 1);
 }

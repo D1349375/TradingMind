@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getDashboardData } from "@/lib/page-cache";
 import { resolveAccountScope, resolveAssetClassMix, canSuggestExchangeSync } from "@/lib/account-filter";
+import { resolveTradeVisibilityCutoff } from "@/lib/tier-limits";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 
 export const metadata: Metadata = {
@@ -10,9 +11,10 @@ export const metadata: Metadata = {
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
-  const scope = await resolveAccountScope(user!.id);
+  const scope = await resolveAccountScope(user!.id, user!.subscriptionTier);
+  const cutoff = await resolveTradeVisibilityCutoff(user!.id, user!.subscriptionTier);
   const [{ trades, lastSyncedAt, goal: goals }, assetClassMix] = await Promise.all([
-    getDashboardData(user!.id, scope.accountIds, scope.isFiltered),
+    getDashboardData(user!.id, scope.accountIds, scope.isFiltered, cutoff?.toISOString() ?? null),
     resolveAssetClassMix(scope.accountIds),
   ]);
 
@@ -31,6 +33,7 @@ export default async function DashboardPage() {
           lastSyncedText={lastSyncedText}
           assetClassMixed={assetClassMix.mixed}
           showBybitHint={canSuggestExchangeSync(assetClassMix.classes)}
+          tier={user!.subscriptionTier}
         />
       </div>
     </div>

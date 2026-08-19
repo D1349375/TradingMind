@@ -1,6 +1,13 @@
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 
+// FREE 方案的可見度下限(見 lib/tier-limits.ts),以 ISO 字串傳入——
+// unstable_cache 用函式參數當快取鍵的一部分,傳字串而非 Date 物件確保
+// 可以安全序列化,也讓不同 cutoff(不同使用者/方案)不會互相蓋掉快取。
+function closedAtFilter(cutoffIso: string | null) {
+  return cutoffIso ? { gte: new Date(cutoffIso) } : undefined;
+}
+
 // 同樣的道理跟 sidebar-data.ts 一樣:(app)/ 底下每個路由都是 force-dynamic,
 // 沒有這層快取的話,使用者在頁面之間來回切換,每次都會重新對資料庫打一輪
 // 查詢。這裡只包「純讀取展示」的頁面(Dashboard/日曆/Setup分析/心態分析)——
@@ -50,10 +57,14 @@ export function resolveGoalState(
 }
 
 export const getDashboardData = unstable_cache(
-  async (userId: string, accountIds: string[], isFiltered: boolean) => {
+  async (userId: string, accountIds: string[], isFiltered: boolean, cutoffIso: string | null) => {
     const [rows, conns, goals] = await Promise.all([
       prisma.trade.findMany({
-        where: { userId, accountId: tradeAccountFilter(accountIds, isFiltered) },
+        where: {
+          userId,
+          accountId: tradeAccountFilter(accountIds, isFiltered),
+          closedAt: closedAtFilter(cutoffIso),
+        },
         select: {
           symbol: true,
           closedAt: true,
@@ -104,9 +115,13 @@ export const getDashboardData = unstable_cache(
 );
 
 export const getCalendarData = unstable_cache(
-  async (userId: string, accountIds: string[], isFiltered: boolean) => {
+  async (userId: string, accountIds: string[], isFiltered: boolean, cutoffIso: string | null) => {
     const rows = await prisma.trade.findMany({
-      where: { userId, accountId: tradeAccountFilter(accountIds, isFiltered) },
+      where: {
+        userId,
+        accountId: tradeAccountFilter(accountIds, isFiltered),
+        closedAt: closedAtFilter(cutoffIso),
+      },
       select: {
         id: true,
         symbol: true,
@@ -130,10 +145,14 @@ export const getCalendarData = unstable_cache(
 );
 
 export const getSetupPageData = unstable_cache(
-  async (userId: string, accountIds: string[], isFiltered: boolean) => {
+  async (userId: string, accountIds: string[], isFiltered: boolean, cutoffIso: string | null) => {
     const [rows, fieldDefs] = await Promise.all([
       prisma.trade.findMany({
-        where: { userId, accountId: tradeAccountFilter(accountIds, isFiltered) },
+        where: {
+          userId,
+          accountId: tradeAccountFilter(accountIds, isFiltered),
+          closedAt: closedAtFilter(cutoffIso),
+        },
         select: {
           symbol: true,
           closedAt: true,
@@ -170,10 +189,14 @@ export const getSetupPageData = unstable_cache(
 );
 
 export const getPsychologyData = unstable_cache(
-  async (userId: string, accountIds: string[], isFiltered: boolean) => {
+  async (userId: string, accountIds: string[], isFiltered: boolean, cutoffIso: string | null) => {
     const [rows, fieldDefs, ruleCount, behaviorRows, goals] = await Promise.all([
       prisma.trade.findMany({
-        where: { userId, accountId: tradeAccountFilter(accountIds, isFiltered) },
+        where: {
+          userId,
+          accountId: tradeAccountFilter(accountIds, isFiltered),
+          closedAt: closedAtFilter(cutoffIso),
+        },
         select: {
           closedAt: true,
           openedAt: true,

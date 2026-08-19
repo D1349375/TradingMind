@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { getCalendarData } from "@/lib/page-cache";
 import { resolveAccountScope } from "@/lib/account-filter";
+import { resolveTradeVisibilityCutoff } from "@/lib/tier-limits";
 import { CalendarView } from "@/components/calendar/calendar-view";
 
 export const metadata: Metadata = {
@@ -10,8 +11,9 @@ export const metadata: Metadata = {
 
 export default async function CalendarPage() {
   const user = await getCurrentUser();
-  const scope = await resolveAccountScope(user!.id);
-  const trades = await getCalendarData(user!.id, scope.accountIds, scope.isFiltered);
+  const scope = await resolveAccountScope(user!.id, user!.subscriptionTier);
+  const cutoff = await resolveTradeVisibilityCutoff(user!.id, user!.subscriptionTier);
+  const trades = await getCalendarData(user!.id, scope.accountIds, scope.isFiltered, cutoff?.toISOString() ?? null);
 
   return (
     <div className="px-9 py-8">

@@ -15,10 +15,16 @@ export function AccountFilterSwitcher({
   allAccountIds,
   selectedAccountIds,
   collapsed,
+  mergeAllowed,
 }: {
   allAccountIds: string[];
   selectedAccountIds: string[];
   collapsed: boolean;
+  // 多帳戶合併/複選檢視是 ADVANCED 專屬(見規劃書 Credit定價文件第五節)。
+  // 真正的防線在伺服器端 lib/account-filter.ts 的 resolveAccountScope,
+  // 這裡只是不要讓 UI 顯示一個點了也沒用的「全選」選項,避免使用者以為
+  // 壞掉——不是唯一防線。
+  mergeAllowed: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -59,6 +65,11 @@ export function AccountFilterSwitcher({
   }
 
   function toggle(id: string) {
+    // 非 ADVANCED 方案不能複選/合併——點哪個模板就單獨切過去,不是勾選。
+    if (!mergeAllowed) {
+      apply([id]);
+      return;
+    }
     const next = selectedAccountIds.includes(id)
       ? selectedAccountIds.filter((x) => x !== id)
       : [...selectedAccountIds, id];
@@ -92,27 +103,38 @@ export function AccountFilterSwitcher({
 
       {open && (
         <div className="absolute bottom-full left-2 z-20 mb-1.5 w-56 rounded-md border border-border bg-surface p-1.5 shadow-lg">
-          <button
-            type="button"
-            onClick={() => apply(allAccountIds)}
-            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[0.82rem] ${
-              isAll ? "text-accent font-semibold" : "text-text-secondary hover:bg-canvas hover:text-text"
-            }`}
-          >
-            <span
-              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
-                isAll ? "border-accent bg-accent" : "border-border"
-              }`}
+          {mergeAllowed ? (
+            <>
+              <button
+                type="button"
+                onClick={() => apply(allAccountIds)}
+                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[0.82rem] ${
+                  isAll ? "text-accent font-semibold" : "text-text-secondary hover:bg-canvas hover:text-text"
+                }`}
+              >
+                <span
+                  className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
+                    isAll ? "border-accent bg-accent" : "border-border"
+                  }`}
+                >
+                  {isAll && (
+                    <svg viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-2.5 w-2.5">
+                      <path d="M4 10l4 4 8-8" />
+                    </svg>
+                  )}
+                </span>
+                <span className="truncate">全選(合併檢視全部模板)</span>
+              </button>
+              <div className="my-1 border-t border-border" />
+            </>
+          ) : (
+            <a
+              href="/settings?tab=subscription"
+              className="mb-1 block rounded px-2 py-1.5 text-[0.75rem] leading-relaxed text-text-tertiary hover:text-accent"
             >
-              {isAll && (
-                <svg viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-2.5 w-2.5">
-                  <path d="M4 10l4 4 8-8" />
-                </svg>
-              )}
-            </span>
-            <span className="truncate">全選(合併檢視全部模板)</span>
-          </button>
-          <div className="my-1 border-t border-border" />
+              合併檢視多個模板需要 ADVANCED 方案,目前只能單獨查看一個
+            </a>
+          )}
           {(accounts ?? allAccountIds.map((id) => ({ id, label: id }))).map((a) => {
             const checked = selectedAccountIds.includes(a.id);
             return (

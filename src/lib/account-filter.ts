@@ -49,7 +49,10 @@ export function canSuggestExchangeSync(classes: string[]): boolean {
   return classes.length === 0 || classes.some((c) => c === "CRYPTO" || c === "未知");
 }
 
-export async function resolveAccountScope(userId: string): Promise<AccountScope> {
+export async function resolveAccountScope(
+  userId: string,
+  tier: "FREE" | "STANDARD" | "ADVANCED" = "ADVANCED",
+): Promise<AccountScope> {
   const allAccounts = await prisma.tradingAccount.findMany({
     where: { userId },
     select: { id: true },
@@ -61,6 +64,17 @@ export async function resolveAccountScope(userId: string): Promise<AccountScope>
   const requested = raw.split(",").map((s) => s.trim()).filter(Boolean);
   const validSet = new Set(allAccountIds);
   const filtered = requested.filter((id) => validSet.has(id));
+
+  // 多帳戶合併/複選檢視是 ADVANCED 專屬(見規劃書 Credit定價文件第五節)。
+  // STANDARD/FREE 就算 cookie 被竄改成選多個、或本來就是預設「全部合併」
+  // 狀態,一律只認第一個(依 createdAt 排序,不是隨機)——只給單一模板
+  // 檢視,不是不能用多模板功能本身(建立模板不受這條限制)。這裡是真正的
+  // 伺服器端防線,UI(account-filter-switcher.tsx)只是把選項先隱藏起來
+  // 避免使用者誤觸,不能只靠前端擋。
+  if (tier !== "ADVANCED" && allAccountIds.length > 1) {
+    const pinned = filtered[0] ?? allAccountIds[0];
+    return { accountIds: [pinned], allAccountIds, isFiltered: true };
+  }
 
   if (filtered.length === 0) {
     return { accountIds: allAccountIds, allAccountIds, isFiltered: false };
