@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 // 對應 prototype 的日曆視圖:月摘要條 + 週損益欄 + 點日期下鑽當日交易。
 
@@ -193,9 +194,12 @@ export function CalendarView({ trades }: { trades: CalTrade[] }) {
             {openData.list.map((t) => {
               const win = (t.realizedPnl ?? 0) >= 0;
               return (
-                <div
+                // 點單筆交易直接連到 /trades?id=... 看完整紀錄(反思筆記/
+                // 紀律清單等),不只是這裡的商品+損益+時間三個數字。
+                <Link
                   key={t.id}
-                  className="rounded border border-border bg-canvas px-3 py-2"
+                  href={`/trades?id=${t.id}`}
+                  className="block rounded border border-border bg-canvas px-3 py-2 hover:border-accent"
                 >
                   <div className="flex justify-between text-[0.87rem]">
                     <span className="font-semibold">{t.symbol}</span>
@@ -219,7 +223,7 @@ export function CalendarView({ trades }: { trades: CalTrade[] }) {
                       : "—"}{" "}
                     · {t.direction}
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>

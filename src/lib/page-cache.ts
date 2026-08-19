@@ -66,6 +66,7 @@ export const getDashboardData = unstable_cache(
           closedAt: closedAtFilter(cutoffIso),
         },
         select: {
+          id: true,
           symbol: true,
           closedAt: true,
           realizedPnl: true,
@@ -94,6 +95,7 @@ export const getDashboardData = unstable_cache(
 
     return {
       trades: rows.map((t) => ({
+        id: t.id,
         symbol: t.symbol,
         closedAt: t.closedAt?.toISOString() ?? null,
         realizedPnl: t.realizedPnl === null ? null : Number(t.realizedPnl),

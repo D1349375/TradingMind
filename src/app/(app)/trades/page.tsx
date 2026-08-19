@@ -11,7 +11,11 @@ export const metadata: Metadata = {
   title: "交易記錄 · TradeMind",
 };
 
-export default async function TradesPage() {
+export default async function TradesPage({
+  searchParams,
+}: {
+  searchParams: { id?: string };
+}) {
   const user = await getCurrentUser();
   const scope = await resolveAccountScope(user!.id, user!.subscriptionTier);
   const cutoff = await resolveTradeVisibilityCutoff(user!.id, user!.subscriptionTier);
@@ -132,6 +136,7 @@ export default async function TradesPage() {
           economicRationale: s.economicRationale,
         }))}
         rules={rules.map((r) => ({ id: r.id, label: r.label }))}
+        initialSelectedId={searchParams.id ?? null}
       />
     </div>
   );

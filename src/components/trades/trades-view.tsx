@@ -155,13 +155,22 @@ export function TradesView({
   fields,
   setups: initialSetups,
   rules,
+  initialSelectedId = null,
 }: {
   trades: TradeDto[];
   fields: FieldDef[];
   setups: SetupOption[];
   rules: DisciplineRuleDef[];
+  // 從最佳/最差交易表、日曆下鑽列表點過來的「跳到這筆交易」連結
+  // (`/trades?id=...`)——見下面 useEffect,不只是初始值,網址帶著不同
+  // id 再點一次也要能跟著換選取,不是只有第一次進頁面時生效。
+  initialSelectedId?: string | null;
 }) {
-  const [selectedId, setSelectedId] = useState(trades[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState(
+    (initialSelectedId && trades.some((t) => t.id === initialSelectedId) ? initialSelectedId : null) ??
+      trades[0]?.id ??
+      null,
+  );
   const [compareId, setCompareId] = useState<string | null>(null);
   const [listWidth, setListWidth] = useState(LIST_WIDTH_DEFAULT);
   const [paneAWidth, setPaneAWidth] = useState(600);
@@ -172,6 +181,15 @@ export function TradesView({
   const selected = trades.find((t) => t.id === selectedId) ?? null;
   const compared = compareId ? (trades.find((t) => t.id === compareId) ?? null) : null;
   const local = useLocalTime();
+
+  // 已經在 /trades 頁上、再點一次別處的「跳到這筆交易」連結(id 換了但
+  // 元件沒重新掛載,useState 的初始值不會再套用)——這裡補一次同步。
+  useEffect(() => {
+    if (initialSelectedId && trades.some((t) => t.id === initialSelectedId)) {
+      setSelectedId(initialSelectedId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelectedId]);
 
   const listCollapsed = listWidth <= LIST_COLLAPSE_THRESHOLD;
   const listDrag = useDragResize(

@@ -94,7 +94,9 @@ export function maxDrawdown(equity: number[]): number {
   return worst;
 }
 
-export type NamedTradePoint = TradePoint & { symbol: string };
+// id 只有「最佳/最差交易表」點擊跳轉到 /trades?id=... 需要用到,其他吃
+// TradePoint 的統計函式都用不到、不用改。
+export type NamedTradePoint = TradePoint & { symbol: string; id: string };
 
 // 每日損益(依平倉時間排序,供長條圖用)。跟 groupByLocalDay 分組邏輯共用,
 // 但回傳陣列(有序)而不是 Map,方便直接畫圖。

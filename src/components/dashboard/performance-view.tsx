@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   dailyPnlSeries,
   pnlHistogram,
@@ -598,6 +599,13 @@ function RuinRiskCard({
   );
 }
 
+function shortDate(iso: string | null) {
+  if (!iso) return "—";
+  // 只到日期、不含時間,跟 period-review 列表同樣理由(見那邊註解):
+  // 固定用 UTC 格式化,不用等掛載後才切本地時區,避免多一層 mounted 判斷。
+  return new Date(iso).toLocaleDateString("zh-TW", { timeZone: "UTC" });
+}
+
 function TopTradesTable({
   title,
   rows,
@@ -616,7 +624,7 @@ function TopTradesTable({
         <table className="w-full border-collapse text-[0.85rem]">
           <thead>
             <tr>
-              {["商品", "損益"].map((h, i) => (
+              {["商品", "方向", "平倉日", "損益"].map((h, i) => (
                 <th
                   key={h}
                   className={`border-b border-border px-2 py-1.5 text-[0.75rem] font-semibold text-text-secondary ${
@@ -629,15 +637,36 @@ function TopTradesTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((t, i) => (
-              <tr key={i}>
-                <td className="border-b border-border px-2 py-1.5">{t.symbol}</td>
-                <td
-                  className={`num border-b border-border px-2 py-1.5 text-right font-semibold ${
-                    tone === "profit" ? "text-profit" : "text-loss"
-                  }`}
-                >
-                  {signed(t.realizedPnl ?? 0)}U
+            {/* 整列包成連結,點哪個欄位都能跳到 /trades?id=... 直接看這筆的
+                完整交易紀錄(反思筆記/紀律清單等)——讓使用者能具體對照
+                「最好/最差的交易當時到底做對/做錯了什麼」,不是只看一個
+                商品名+損益數字。 */}
+            {rows.map((t) => (
+              <tr key={t.id} className="group cursor-pointer hover:bg-canvas">
+                <td className="border-b border-border p-0">
+                  <Link href={`/trades?id=${t.id}`} className="block px-2 py-1.5 group-hover:text-accent">
+                    {t.symbol}
+                  </Link>
+                </td>
+                <td className="border-b border-border p-0 text-right">
+                  <Link href={`/trades?id=${t.id}`} className="block px-2 py-1.5 text-text-secondary">
+                    {t.direction === "LONG" ? "多" : t.direction === "SHORT" ? "空" : "—"}
+                  </Link>
+                </td>
+                <td className="border-b border-border p-0 text-right">
+                  <Link href={`/trades?id=${t.id}`} className="num block px-2 py-1.5 text-text-secondary">
+                    {shortDate(t.closedAt)}
+                  </Link>
+                </td>
+                <td className="border-b border-border p-0 text-right">
+                  <Link
+                    href={`/trades?id=${t.id}`}
+                    className={`num block px-2 py-1.5 font-semibold ${
+                      tone === "profit" ? "text-profit" : "text-loss"
+                    }`}
+                  >
+                    {signed(t.realizedPnl ?? 0)}U
+                  </Link>
                 </td>
               </tr>
             ))}
