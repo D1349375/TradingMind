@@ -13,7 +13,7 @@ import { DETECTION_DEFS } from "@/lib/behavior-presets";
 import { resolveAccountScope, resolveAssetClassMix } from "@/lib/account-filter";
 import { tradeAccountFilter, resolveGoalState } from "@/lib/page-cache";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
+import { getSpendableBalance, reserveCredits, refundCredits, creditSpendOps } from "@/lib/credits";
 import { requiresPaidTier } from "@/lib/tier-limits";
 import { addMonths } from "@/lib/subscriptions";
 
@@ -192,14 +192,16 @@ export async function POST(request: NextRequest) {
     creditCost = STANDARD_COST[periodType];
   }
 
-  const available = await getSpendableBalance(user.id);
-  if (!available || available.total < creditCost) {
+  // 呼叫 LLM 之前先原子扣款(見 lib/credits.ts 開頭說明,擋並發請求超扣
+  // 同一份餘額),扣不到代表餘額不夠,不浪費一次 LLM 呼叫。
+  const reserved = await reserveCredits(user.id, creditCost);
+  if (!reserved) {
+    const available = await getSpendableBalance(user.id);
     return NextResponse.json(
       { error: "Credit 餘額不足", required: creditCost, balance: available?.total ?? 0 },
       { status: 402 },
     );
   }
-  const spend = planCreditSpend(available, creditCost);
 
   let result;
   try {
@@ -210,6 +212,8 @@ export async function POST(request: NextRequest) {
     const { dailySeries, crossAnalysisTrades, enabledFieldKeys, traderScore, ...statsForLLM } = statsSnapshot;
     result = await runPeriodReport(persona, statsForLLM);
   } catch (err) {
+    // 失敗的呼叫不該讓使用者付錢——已經扣過的額度退回。
+    await refundCredits(user.id, creditCost);
     if (err instanceof PeriodReportNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }
@@ -217,7 +221,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  // 2. 只有真的成功產出結果才扣款——失敗的呼叫不該讓使用者付錢
+  // 2. 扣款已經在上面 reserveCredits() 完成,這裡只建立報告紀錄+留一筆
+  // CreditTransaction 稽核紀錄。
   const [report] = await prisma.$transaction([
     prisma.periodReport.create({
       data: {
@@ -236,7 +241,6 @@ export async function POST(request: NextRequest) {
     }),
     ...creditSpendOps(
       user.id,
-      spend,
       creditCost,
       `${periodType === "WEEK" ? "period_report_week" : "period_report_month"}${creditReasonSuffix}`,
     ),

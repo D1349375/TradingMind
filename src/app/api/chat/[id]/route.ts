@@ -6,7 +6,7 @@ import { isPersonaKey } from "@/lib/personas";
 import { resolveAccountScope } from "@/lib/account-filter";
 import { runPersonaChat, ChatNotConfiguredError } from "@/lib/chat";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
+import { getSpendableBalance, reserveCredits, refundCredits, creditSpendOps } from "@/lib/credits";
 import { requiresPaidTier } from "@/lib/tier-limits";
 
 const CREDIT_COST = 3; // 2026-08-19 定案,同 /api/chat/route.ts 說明
@@ -76,14 +76,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: `訊息長度不能超過 ${MAX_MESSAGE_LENGTH} 字` }, { status: 400 });
   }
 
-  const available = await getSpendableBalance(user.id);
-  if (!available || available.total < CREDIT_COST) {
+  // 呼叫 LLM 之前先原子扣款(見 lib/credits.ts 開頭說明,擋並發請求超扣
+  // 同一份餘額),扣不到代表餘額不夠。
+  const reserved = await reserveCredits(user.id, CREDIT_COST);
+  if (!reserved) {
+    const available = await getSpendableBalance(user.id);
     return NextResponse.json(
       { error: "Credit 餘額不足", required: CREDIT_COST, balance: available?.total ?? 0 },
       { status: 402 },
     );
   }
-  const spend = planCreditSpend(available, CREDIT_COST);
 
   const scope = await resolveAccountScope(user.id, user.subscriptionTier);
   const history = conversation.messages.map((m) => ({
@@ -101,6 +103,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       userMessage: message,
     });
   } catch (err) {
+    // 失敗的呼叫不該讓使用者付錢——已經扣過的額度退回。
+    await refundCredits(user.id, CREDIT_COST);
     if (err instanceof ChatNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }
@@ -108,6 +112,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 
+  // 扣款已經在上面 reserveCredits() 完成,這裡只建立訊息紀錄+留一筆
+  // CreditTransaction 稽核紀錄。
   await prisma.$transaction([
     prisma.chatMessage.create({
       data: { conversationId: conversation.id, role: "USER", content: message },
@@ -122,7 +128,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       },
     }),
     prisma.chatConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
-    ...creditSpendOps(user.id, spend, CREDIT_COST, "persona_chat"),
+    ...creditSpendOps(user.id, CREDIT_COST, "persona_chat"),
   ]);
 
   return NextResponse.json({ reply: result.text });

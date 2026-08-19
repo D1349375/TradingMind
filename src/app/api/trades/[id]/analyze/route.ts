@@ -8,7 +8,7 @@ import {
   type TradeDataForAnalysis,
 } from "@/lib/trader-debate";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
+import { getSpendableBalance, reserveCredits, refundCredits, creditSpendOps } from "@/lib/credits";
 
 // 純文字單一人格分析,規劃書 11.2 節定價
 const CREDIT_COST = 5;
@@ -59,15 +59,16 @@ export async function POST(
     return NextResponse.json({ error: "找不到這筆交易" }, { status: 404 });
   }
 
-  // 1. 預檢查額度(規劃書 11.4 流程),先擋掉沒錢的請求,不浪費一次 LLM 呼叫
-  const available = await getSpendableBalance(user.id);
-  if (!available || available.total < CREDIT_COST) {
+  // 1. 呼叫 LLM 之前先原子扣款(規劃書 11.4 流程;見 lib/credits.ts 開頭
+  // 說明,擋並發請求超扣同一份餘額),扣不到代表餘額不夠,不浪費一次 LLM 呼叫。
+  const reserved = await reserveCredits(user.id, CREDIT_COST);
+  if (!reserved) {
+    const available = await getSpendableBalance(user.id);
     return NextResponse.json(
       { error: "Credit 餘額不足", required: CREDIT_COST, balance: available?.total ?? 0 },
       { status: 402 },
     );
   }
-  const spend = planCreditSpend(available, CREDIT_COST);
 
   const tradeData: TradeDataForAnalysis = {
     symbol: trade.symbol,
@@ -93,6 +94,8 @@ export async function POST(
   try {
     result = await runPersonaAnalysis(persona, tradeData);
   } catch (err) {
+    // 失敗的呼叫不該讓使用者付錢——已經扣過的額度退回。
+    await refundCredits(user.id, CREDIT_COST);
     if (err instanceof TraderDebateNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }
@@ -100,8 +103,8 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  // 2. 只有真的成功產出結果才扣款——失敗的呼叫不該讓使用者付錢
-  await prisma.$transaction(creditSpendOps(user.id, spend, CREDIT_COST, REASON));
+  // 2. 扣款已經在上面 reserveCredits() 完成,這裡只留一筆 CreditTransaction 稽核紀錄。
+  await prisma.$transaction(creditSpendOps(user.id, CREDIT_COST, REASON));
 
   return NextResponse.json({ result, creditsSpent: CREDIT_COST });
 }

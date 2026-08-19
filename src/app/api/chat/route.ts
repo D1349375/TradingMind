@@ -7,7 +7,7 @@ import { isPersonaKey } from "@/lib/personas";
 import { resolveAccountScope } from "@/lib/account-filter";
 import { runPersonaChat, ChatNotConfiguredError } from "@/lib/chat";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { getSpendableBalance, planCreditSpend, creditSpendOps } from "@/lib/credits";
+import { getSpendableBalance, reserveCredits, refundCredits, creditSpendOps } from "@/lib/credits";
 import { requiresPaidTier } from "@/lib/tier-limits";
 
 // 開放式人格問答(TradeMind_開放式人格問答_技術設計.md)。這支路由建立
@@ -60,15 +60,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `訊息長度不能超過 ${MAX_MESSAGE_LENGTH} 字` }, { status: 400 });
   }
 
-  // 1. 預檢查額度,先擋掉沒錢的請求,不浪費一次 LLM 呼叫
-  const available = await getSpendableBalance(user.id);
-  if (!available || available.total < CREDIT_COST) {
+  // 1. 呼叫 LLM 之前先原子扣款(見 lib/credits.ts 開頭說明,擋並發請求
+  // 超扣同一份餘額),扣不到代表餘額不夠,直接擋掉、不浪費一次 LLM 呼叫。
+  const reserved = await reserveCredits(user.id, CREDIT_COST);
+  if (!reserved) {
+    const available = await getSpendableBalance(user.id);
     return NextResponse.json(
       { error: "Credit 餘額不足", required: CREDIT_COST, balance: available?.total ?? 0 },
       { status: 402 },
     );
   }
-  const spend = planCreditSpend(available, CREDIT_COST);
 
   const scope = await resolveAccountScope(user.id, user.subscriptionTier);
 
@@ -76,6 +77,8 @@ export async function POST(request: NextRequest) {
   try {
     result = await runPersonaChat({ persona, userId: user.id, scope, history: [], userMessage: message });
   } catch (err) {
+    // 失敗的呼叫不該讓使用者付錢——已經扣過的額度退回。
+    await refundCredits(user.id, CREDIT_COST);
     if (err instanceof ChatNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }
@@ -83,13 +86,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 
-  // 2. 只有真的成功產出回覆才扣款跟建立對話紀錄。用批次陣列形式的
-  // $transaction(不是 callback 形式的互動式交易)——理由跟全站其他寫入
-  // (period-reports/route.ts、綠界 callback)一致,互動式交易會在整個
-  // callback 執行期間占用一個連線,在 Supabase pooler 上更容易撞到
-  // "Unable to start a transaction in the given time"(P2028)這個逾時,
-  // 批次陣列形式不會有這個問題。先自己生成 id 取代讓 Prisma 自動產生,
-  // 這樣才能在同一個陣列裡讓 ChatMessage 引用還沒真正建立的 ChatConversation id。
+  // 2. 扣款已經在上面 reserveCredits() 完成,這裡只建立對話紀錄+留一筆
+  // CreditTransaction 稽核紀錄。用批次陣列形式的 $transaction(不是
+  // callback 形式的互動式交易)——理由跟全站其他寫入(period-reports/
+  // route.ts、綠界 callback)一致,互動式交易會在整個 callback 執行期間
+  // 占用一個連線,在 Supabase pooler 上更容易撞到 "Unable to start a
+  // transaction in the given time"(P2028)這個逾時,批次陣列形式不會有
+  // 這個問題。先自己生成 id 取代讓 Prisma 自動產生,這樣才能在同一個陣列裡
+  // 讓 ChatMessage 引用還沒真正建立的 ChatConversation id。
   const conversationId = randomUUID();
   await prisma.$transaction([
     prisma.chatConversation.create({
@@ -110,7 +114,7 @@ export async function POST(request: NextRequest) {
         creditsCost: CREDIT_COST,
       },
     }),
-    ...creditSpendOps(user.id, spend, CREDIT_COST, "persona_chat"),
+    ...creditSpendOps(user.id, CREDIT_COST, "persona_chat"),
   ]);
 
   return NextResponse.json({ conversationId, reply: result.text });
