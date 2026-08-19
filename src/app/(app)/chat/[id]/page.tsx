@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 
 export default async function ChatDetailPage({ params }: { params: { id: string } }) {
   const user = await getCurrentUser();
+  const tierBlocked = user!.subscriptionTier === "FREE";
 
   const [conversation, conversations] = await Promise.all([
     prisma.chatConversation.findFirst({
@@ -51,6 +52,7 @@ export default async function ChatDetailPage({ params }: { params: { id: string 
             initialMessages={conversation.messages.map((m) => ({ id: m.id, role: m.role, content: m.content }))}
             initialPersona={conversation.persona}
             archived={conversation.archivedAt !== null}
+            tierBlocked={tierBlocked}
           />
         </div>
       </div>

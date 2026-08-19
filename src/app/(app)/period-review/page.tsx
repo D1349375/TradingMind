@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { PERSONAS, type PersonaKey } from "@/lib/personas";
 import type { PeriodReportResult } from "@/lib/period-report";
 import { GenerateReportButtons } from "@/components/period-review/generate-report-buttons";
+import { GatedFeature } from "@/components/ui/gated-feature";
 
 export const metadata: Metadata = {
   title: "週期回顧 · TradeMind",
@@ -16,6 +17,7 @@ function fmtDate(d: Date) {
 
 export default async function PeriodReviewPage() {
   const user = await getCurrentUser();
+  const tier = user!.subscriptionTier;
 
   const reports = await prisma.periodReport.findMany({
     where: { userId: user!.id },
@@ -40,7 +42,16 @@ export default async function PeriodReviewPage() {
           </p>
         </div>
 
-        <GenerateReportButtons />
+        {/* 週報/月報 FREE 整個功能鎖(不是局部),用跟 Dashboard 等處同一套
+            GatedFeature 灰階+鎖頭處理——已產生過的舊報告(降級前留下的)
+            不受影響,只鎖「產生新報告」這個動作本身。 */}
+        {tier === "FREE" ? (
+          <GatedFeature feature="AI 週報/月報生成">
+            <GenerateReportButtons />
+          </GatedFeature>
+        ) : (
+          <GenerateReportButtons />
+        )}
 
         {reports.length === 0 ? (
           <div className="rounded border border-dashed border-border bg-canvas px-4 py-12 text-center text-[0.85rem] text-text-secondary">

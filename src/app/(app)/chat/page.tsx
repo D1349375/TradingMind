@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 
 export default async function ChatListPage() {
   const user = await getCurrentUser();
+  const tierBlocked = user!.subscriptionTier === "FREE";
 
   const conversations = await prisma.chatConversation.findMany({
     where: { userId: user!.id },
@@ -38,7 +39,7 @@ export default async function ChatListPage() {
             </p>
           </div>
 
-          <ChatShell conversationId={null} initialMessages={[]} initialPersona="ict" />
+          <ChatShell conversationId={null} initialMessages={[]} initialPersona="ict" tierBlocked={tierBlocked} />
         </div>
       </div>
     </div>

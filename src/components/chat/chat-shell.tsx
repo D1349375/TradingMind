@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import type { PersonaKey } from "@/lib/personas";
+import { GatedFeature } from "@/components/ui/gated-feature";
 
 type Message = { id: string; role: "USER" | "ASSISTANT"; content: string };
 
@@ -37,11 +38,17 @@ export function ChatShell({
   initialMessages,
   initialPersona,
   archived = false,
+  tierBlocked = false,
 }: {
   conversationId: string | null;
   initialMessages: Message[];
   initialPersona: PersonaKey;
   archived?: boolean;
+  // FREE 方案整個 AI 問答功能都鎖(見 tier-limits.ts 的 requiresPaidTier)。
+  // 已有訊息的舊對話(降級前留下的)只鎖輸入框,訊息本身照常看得到；
+  // 全新空對話(還沒送出過第一則訊息)沒有東西可以先「看得到但用不了」,
+  // 整個對話框(含範例提示按鈕)一起蓋鎖頭。
+  tierBlocked?: boolean;
 }) {
   const router = useRouter();
   const [activeId, setActiveId] = useState(conversationId);
@@ -57,9 +64,14 @@ export function ChatShell({
   // 建立就不能再換人格,下拉選單改成鎖定顯示目前的人格。
   const locked = activeId !== null;
   const atLimit = messages.length >= MAX_MESSAGES_PER_CONVERSATION;
-  // 封存的對話不給繼續發言(側欄有取消封存按鈕),跟訊息數上限一樣都是
-  // 「擋輸入框」的理由,合併成一個總開關方便判斷。
-  const blocked = atLimit || archived;
+  const hasMessages = messages.length > 0;
+  // 封存的對話不給繼續發言(側欄有取消封存按鈕)、訊息數上限、FREE 方案
+  // 分級鎖,三種理由都是「擋輸入框」,合併成一個總開關方便判斷。
+  const blocked = atLimit || archived || tierBlocked;
+  // 全新空對話用 GatedFeature 蓋住整個對話框;已有訊息的舊對話只蓋輸入區,
+  // 訊息本身不受影響——見上面 tierBlocked prop 的註解。
+  const showFullGate = tierBlocked && !hasMessages;
+  const showComposerGate = tierBlocked && hasMessages;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -118,7 +130,51 @@ export function ChatShell({
     }
   }
 
-  return (
+  const composer = (
+    <div className="border-t border-border px-4 py-3">
+      <textarea
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        disabled={blocked}
+        placeholder={archived ? "這個對話已封存" : atLimit ? "這個對話已達訊息數上限" : "輸入訊息,Enter傳送、Shift+Enter換行"}
+        rows={2}
+        className="w-full resize-none rounded border border-border bg-canvas px-3 py-2 text-[0.85rem] outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+      />
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <select
+            value={persona}
+            disabled={locked}
+            onChange={(e) => setPersona(e.target.value as PersonaKey)}
+            title={locked ? "人格在對話建立後就固定,開新對話才能換人格" : "選擇要對話的人格"}
+            className={`rounded-full border px-3 py-1.5 text-[0.78rem] outline-none ${
+              locked
+                ? "cursor-not-allowed border-border bg-canvas text-text-tertiary"
+                : "border-border bg-canvas text-text-secondary hover:border-accent"
+            }`}
+          >
+            {PERSONA_OPTIONS.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-[0.72rem] text-text-tertiary">每則回覆 {CREDIT_COST} Credits</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => send()}
+          disabled={sending || !input.trim() || blocked}
+          className="shrink-0 rounded bg-accent px-4 py-2 text-[0.82rem] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+        >
+          送出
+        </button>
+      </div>
+    </div>
+  );
+
+  const shell = (
     <div className="flex flex-1 flex-col overflow-hidden rounded border border-border bg-surface">
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
@@ -172,12 +228,12 @@ export function ChatShell({
           AI 問答尚未開放,還不會扣 Credit。等後台設定好之後就能直接使用。
         </div>
       )}
-      {archived && (
+      {!tierBlocked && archived && (
         <div className="mx-4 mb-2 rounded border border-dashed border-border bg-canvas px-4 py-3 text-[0.8rem] text-text-secondary">
           這個對話已封存,請先在左側列表取消封存才能繼續發言。
         </div>
       )}
-      {!archived && atLimit && (
+      {!tierBlocked && !archived && atLimit && (
         <div className="mx-4 mb-2 rounded border border-dashed border-border bg-canvas px-4 py-3 text-[0.8rem] text-text-secondary">
           這個對話已經達到訊息數上限(30則),請{" "}
           <a href="/chat" className="text-accent underline">
@@ -187,47 +243,9 @@ export function ChatShell({
         </div>
       )}
 
-      <div className="border-t border-border px-4 py-3">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={blocked}
-          placeholder={archived ? "這個對話已封存" : atLimit ? "這個對話已達訊息數上限" : "輸入訊息,Enter傳送、Shift+Enter換行"}
-          rows={2}
-          className="w-full resize-none rounded border border-border bg-canvas px-3 py-2 text-[0.85rem] outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-        />
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <select
-              value={persona}
-              disabled={locked}
-              onChange={(e) => setPersona(e.target.value as PersonaKey)}
-              title={locked ? "人格在對話建立後就固定,開新對話才能換人格" : "選擇要對話的人格"}
-              className={`rounded-full border px-3 py-1.5 text-[0.78rem] outline-none ${
-                locked
-                  ? "cursor-not-allowed border-border bg-canvas text-text-tertiary"
-                  : "border-border bg-canvas text-text-secondary hover:border-accent"
-              }`}
-            >
-              {PERSONA_OPTIONS.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-            <span className="text-[0.72rem] text-text-tertiary">每則回覆 {CREDIT_COST} Credits</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => send()}
-            disabled={sending || !input.trim() || blocked}
-            className="shrink-0 rounded bg-accent px-4 py-2 text-[0.82rem] font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            送出
-          </button>
-        </div>
-      </div>
+      {showComposerGate ? <GatedFeature feature="AI 問答(繼續對話)">{composer}</GatedFeature> : composer}
     </div>
   );
+
+  return showFullGate ? <GatedFeature feature="AI 問答">{shell}</GatedFeature> : shell;
 }
