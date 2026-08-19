@@ -5,15 +5,16 @@ export const metadata: Metadata = {
   title: "服務條款 · TradeMind",
 };
 
-// 草稿(2026-08-15)——第 5/9/12 節內容已依使用者確認的商業條件補齊,
-// 但整份條款仍建議正式上線前諮詢法律意見過目一次,不能只憑本頁文字上線。
+// 草稿(2026-08-15,第5節訂閱條款2026-08-19更新)——第 5/9/12 節內容已依
+// 使用者確認的商業條件補齊,但整份條款仍建議正式上線前諮詢法律意見過目
+// 一次,不能只憑本頁文字上線。
 export default function TermsPage() {
   return (
     <div className="mx-auto max-w-[760px] px-6 py-14 text-text">
       <BackButton />
       <h1 className="mb-1 text-[1.6rem] font-semibold">服務條款</h1>
       <p className="mb-8 text-[0.82rem] text-text-tertiary">
-        最後更新:2026 年 8 月 15 日(草稿版本,尚未正式生效)
+        最後更新:2026 年 8 月 19 日(草稿版本,尚未正式生效)
       </p>
 
       <Section title="1. 服務說明">
@@ -53,7 +54,7 @@ export default function TermsPage() {
 
       <Section title="5. 付費方案與退款政策">
         <p>
-          本服務提供 Credit 點數儲值包與(未來將提供的)訂閱方案,透過綠界科技(ECPay)處理金流。Credit 用於兌換 AI 分析等加值功能之使用額度。
+          本服務提供 Credit 點數儲值包與訂閱方案(STANDARD/ADVANCED),透過綠界科技(ECPay)處理金流。Credit 用於兌換 AI 分析等加值功能之使用額度。
         </p>
         <ul className="list-disc space-y-1.5 pl-5">
           <li>
@@ -65,7 +66,19 @@ export default function TermsPage() {
             餘額若混合多筆訂單,退款申請以「先進先出」認定該筆訂單的 Credit 是否已被消耗。
           </li>
           <li>
-            未來推出的訂閱方案,扣款週期與取消規則屆時另行公告,取消訂閱僅停止下一期扣款,當期已付費用不予退還。
+            <strong>訂閱方案(STANDARD/ADVANCED)為每月自動續扣</strong>:你透過綠界完成第一次刷卡授權後,系統會依約定週期(每月)自動扣款,直到你取消為止。每次扣款成功會依方案發放當月 Credit 額度,<strong>當月未用完的訂閱額度不會累積到下個月</strong>。
+          </li>
+          <li>
+            <strong>升級方案(例如 STANDARD 升級 ADVANCED)立即生效</strong>:系統會立即終止原方案的後續扣款、以新方案金額重新授權一次,當下就能使用新方案的功能與額度;原方案當期已付費用不會折抵或退還。
+          </li>
+          <li>
+            <strong>降級或取消訂閱,會先停止未來扣款,但當期已付費的方案權限會保留到當期到期日</strong>,到期日之前你可以繼續使用原方案的全部功能;<strong>已付費用不予退還</strong>。
+          </li>
+          <li>
+            <strong>⚠️ 降級不會在到期後自動幫你訂閱新方案</strong>:因綠界定期定額的技術限制,降級到期後系統只會把你的方案降回較低等級(或 FREE),<strong>不會自動用新金額再次刷卡</strong>——如果你降級後想繼續使用 STANDARD,需要在到期後自行重新訂閱一次(不用重填卡號,走一次跟訂閱時相同的付款流程即可),系統會在到期前後於畫面上提醒。
+          </li>
+          <li>
+            若信用卡扣款失敗(例如卡片到期、餘額不足),系統會於下一個扣款週期自動重試;<strong>連續失敗達 6 次,訂閱會自動終止</strong>,方案於當期到期後降回 FREE。
           </li>
           <li>
             若因本服務端可歸責之重大事由(例如系統錯誤導致重複扣款、功能長期無法使用)致你無法正常使用已購買的 Credit,不受上述期限限制,請透過下方聯絡方式與我們聯繫處理。

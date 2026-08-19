@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { resolvePendingTierChange } from "@/lib/subscriptions";
 
 // Supabase Auth 的 auth.users 與我們自己的 User 表是兩套東西。
 // 這裡在每次取得登入者時做 upsert,讓兩邊的 id 對齊——
@@ -28,6 +29,11 @@ export const getCurrentUser = cache(async () => {
       creditBalance: { create: {} },
     },
   });
+
+  // 降級/取消排定的訂閱變更,到期時在這裡懶惰套用(見 lib/subscriptions.ts)。
+  // 這支函式每個 request 都會經過,是唯一需要接這個檢查的地方。
+  const newTier = await resolvePendingTierChange(user.id);
+  if (newTier !== null) user.subscriptionTier = newTier;
 
   return user;
 });

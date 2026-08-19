@@ -9,13 +9,14 @@ import { BehaviorDetection } from "@/components/settings/behavior-detection";
 import { NotificationSettings } from "@/components/settings/notification-settings";
 import { AccountDangerZone } from "@/components/settings/account-danger-zone";
 import { CreditTopup } from "@/components/settings/credit-topup";
+import { SubscriptionPlans } from "@/components/settings/subscription-plans";
 import { getCurrentUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "設定 · TradeMind",
 };
 
-// 分頁對應 prototype/index.html 的設定頁六分頁,「帳戶」「儲值」是後來加的。
+// 分頁對應 prototype/index.html 的設定頁六分頁,「帳戶」「儲值」「訂閱」是後來加的。
 const TABS = [
   { key: "accounts", label: "帳戶模板" },
   { key: "exchange", label: "交易所連線" },
@@ -24,6 +25,7 @@ const TABS = [
   { key: "detection", label: "行為偵測" },
   { key: "notify", label: "通知設定" },
   { key: "goals", label: "目標設定" },
+  { key: "subscription", label: "訂閱" },
   { key: "billing", label: "儲值" },
   { key: "account", label: "帳戶" },
 ] as const;
@@ -87,6 +89,8 @@ export default async function SettingsPage({
             <DisciplineRules />
           ) : active === "detection" ? (
             <BehaviorDetection />
+          ) : active === "subscription" ? (
+            <SubscriptionPlans />
           ) : active === "billing" ? (
             <CreditTopup />
           ) : active === "account" ? (

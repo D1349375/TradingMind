@@ -71,6 +71,52 @@ export function buildCheckoutHtml(params: {
   });
 }
 
+// 定期定額 ExecTimes 上限(月週期是999次≈83年),拿來當「無限期,取消前
+// 一直續扣」的實務值——綠界規定必填一個有限次數,沒有「無限」這個選項。
+const PERIOD_MAX_EXEC_TIMES = "999";
+
+// 產生導向綠界結帳頁的自動送出表單(HTML),定期定額版本。跟
+// buildCheckoutHtml() 的差異只在多一組 period_info 參數——SDK 內部是
+// aio_check_out_credit_period(),簽章/欄位組裝邏輯共用同一個 client。
+export function buildPeriodCheckoutHtml(params: {
+  merchantTradeNo: string;
+  periodAmount: number;
+  itemName: string;
+  periodReturnUrl: string;
+  clientBackUrl: string;
+}) {
+  const client = getEcpayClient();
+  return client.payment_client.aio_check_out_credit_period(
+    {
+      PeriodAmount: String(params.periodAmount),
+      PeriodType: "M",
+      Frequency: "1",
+      ExecTimes: PERIOD_MAX_EXEC_TIMES,
+      PeriodReturnURL: params.periodReturnUrl,
+    },
+    {
+      MerchantTradeNo: params.merchantTradeNo,
+      MerchantTradeDate: formatMerchantTradeDate(new Date()),
+      TotalAmount: String(params.periodAmount),
+      TradeDesc: "TradeMind 訂閱",
+      ItemName: params.itemName,
+      ReturnURL: params.periodReturnUrl,
+      ClientBackURL: params.clientBackUrl,
+    },
+    {},
+  );
+}
+
+// 終止一筆定期定額訂單的後續扣款。綠界文件明講:停用成功後無法重新
+// 啟用,只能重新發動新訂單——呼叫端不用假設這個訂單之後還能復活。
+export async function cancelPeriodOrder(merchantTradeNo: string): Promise<void> {
+  const client = getEcpayClient();
+  await client.exec_grant_refund.creditcard_period_act({
+    MerchantTradeNo: merchantTradeNo,
+    Action: "Cancel",
+  });
+}
+
 // 驗證綠界 ReturnURL callback 帶回的 CheckMacValue——用同一個 client 實例的
 // 內部演算法重算(官方演算法本身有幾個容易做錯的細節:大小寫排序、.NET 風格
 // URL encode、加解密模式,直接沿用 SDK 內部方法比自己重刻可靠)。

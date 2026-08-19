@@ -15,9 +15,17 @@ declare module "ecpay_aio_nodejs" {
         parameters: Record<string, unknown>,
         invoice?: Record<string, unknown>,
       ): string;
+      aio_check_out_credit_period(
+        period_info: Record<string, unknown>,
+        parameters: Record<string, unknown>,
+        invoice?: Record<string, unknown>,
+      ): string;
       helper: {
         gen_chk_mac_value(params: Record<string, unknown>, mode?: number): string;
       };
+    };
+    exec_grant_refund: {
+      creditcard_period_act(parameters: Record<string, unknown>): Promise<unknown>;
     };
   }
 

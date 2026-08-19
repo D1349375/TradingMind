@@ -42,6 +42,8 @@ model User {
   creditPurchases   CreditPurchase[]
   periodReports     PeriodReport[]
   chatConversations ChatConversation[]
+  subscription      Subscription?
+  subscriptionOrders SubscriptionOrder[]
 }
 
 enum SubscriptionTier {
@@ -373,6 +375,46 @@ enum CreditPurchaseStatus {
   PENDING
   PAID
   FAILED
+}
+
+// 訂閱狀態指標——不重複存 tier(那是 User.subscriptionTier 的事,單一
+// 真實來源,這裡只管「跟綠界定期定額扣款有關的狀態」,避免兩個欄位互相
+// 不同步。ecpayMerchantTradeNo 是「目前正在續扣中」的訂單編號,null 代表
+// 沒有正在扣款的訂閱(FREE,或降級/取消後排定變更但還沒到期)。
+model Subscription {
+  userId               String            @id
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ecpayMerchantTradeNo String?           @unique
+  periodAmount         Int?
+  currentPeriodEnd     DateTime?
+  // 降級/取消後,到期時 User.subscriptionTier 要變成什麼;null=沒有排定
+  // 變更。降級到 FREE 也用這個欄位(pendingTier=FREE),不用另外開布林值。
+  pendingTier          SubscriptionTier?
+  updatedAt            DateTime          @updatedAt
+}
+
+// 每一筆定期定額訂單的完整歷史(對照 CreditPurchase 同一個模式)——
+// merchantTradeNo 是我方產生的訂單編號,綠界的 PeriodReturnURL callback
+// 靠這個核對是哪一筆訂單。一個使用者換方案/取消重訂會累積多筆紀錄,
+// Subscription.ecpayMerchantTradeNo 只指向其中「目前生效中」的那一筆。
+model SubscriptionOrder {
+  id              String                  @id @default(uuid())
+  userId          String
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchantTradeNo String                  @unique
+  tier            SubscriptionTier
+  periodAmount    Int
+  status          SubscriptionOrderStatus @default(PENDING)
+  ecpayTradeNo    String?
+  createdAt       DateTime                @default(now())
+  activatedAt     DateTime?
+}
+
+enum SubscriptionOrderStatus {
+  PENDING // 建單但還沒收到第一次授權成功的callback
+  ACTIVE // 至少成功扣過一次,目前是該使用者正在續扣的訂單
+  FAILED // 第一次授權就失敗,從未真正啟用過
+  CANCELED // 曾經生效,後來被取消(使用者主動降級/取消,或被新訂單取代)
 }
 
 // API 端點防濫用用的固定窗口計數器(`${userId}:${route}:${windowStart}`)。
